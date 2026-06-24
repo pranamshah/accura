@@ -51,7 +51,7 @@ export default function DashboardLayout({
       <CompanyLoader />
       <div className="flex h-screen bg-background overflow-hidden">
         <Sidebar />
-        <div className="flex-1 flex flex-col min-w-0 md:ml-[240px]">
+        <div className="flex-1 flex flex-col min-w-0 md:ml-[220px]">
           <TopBar />
           <main className="flex-1 overflow-y-auto pb-8 px-0">
             {children}

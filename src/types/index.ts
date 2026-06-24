@@ -204,6 +204,12 @@ export interface Voucher {
   entries?: VoucherEntry[];
   gstLines?: GSTLine[];
   inventoryLines?: InventoryLine[];
+  // Computed/joined fields returned by some API endpoints
+  partyName?: string | null;
+  partyGstin?: string | null;
+  subtotal?: number;
+  taxAmount?: number;
+  amount?: number;
 }
 
 export interface Item {

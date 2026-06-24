@@ -285,6 +285,40 @@ export async function GET() {
       )
     `;
     await sql`
+      CREATE TABLE IF NOT EXISTS stock_groups (
+        id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+        company_id TEXT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        alias TEXT,
+        parent_id TEXT REFERENCES stock_groups(id),
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `;
+    await sql`
+      CREATE TABLE IF NOT EXISTS pay_heads (
+        id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+        company_id TEXT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        type TEXT NOT NULL DEFAULT 'EARNING',
+        calculation_type TEXT NOT NULL DEFAULT 'FIXED',
+        value NUMERIC DEFAULT 0,
+        is_taxable BOOLEAN DEFAULT FALSE,
+        is_active BOOLEAN DEFAULT TRUE,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `;
+    await sql`
+      CREATE TABLE IF NOT EXISTS cost_centers (
+        id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+        company_id TEXT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        alias TEXT,
+        description TEXT,
+        parent_id TEXT REFERENCES cost_centers(id),
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `;
+    await sql`
       CREATE TABLE IF NOT EXISTS bank_accounts (
         id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
         company_id TEXT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
