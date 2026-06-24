@@ -1,12 +1,14 @@
 import OpenAI from 'openai';
 import type { AISuggestion, VoucherType } from '@/types';
 
+// Groq — 100% free AI inference (groq.com, no credit card required)
+// Free tier: 14,400 requests/day, fast Llama 3.3 70B
 const client = new OpenAI({
-  apiKey: process.env.XAI_API_KEY ?? '',
-  baseURL: 'https://api.x.ai/v1',
+  apiKey: process.env.GROQ_API_KEY ?? '',
+  baseURL: 'https://api.groq.com/openai/v1',
 });
 
-const GROK_MODEL = 'grok-3-mini';
+const MODEL = 'llama-3.3-70b-versatile';
 
 const SYSTEM_PROMPT = `You are an expert Indian Chartered Accountant assistant for Accura accounting software.
 Always respond with valid JSON when asked for structured data.
@@ -14,11 +16,13 @@ Use proper Indian accounting standards (Ind AS / AS).
 Use Indian terminology: ledger, voucher, narration, Dr/Cr, GST, TDS.
 Be concise and precise.`;
 
+const AI_KEY = () => process.env.GROQ_API_KEY;
+
 export async function suggestJournalEntry(
   description: string,
   context?: { name: string; gstin?: string; state?: string }
 ): Promise<AISuggestion> {
-  if (!process.env.XAI_API_KEY) {
+  if (!AI_KEY()) {
     return {
       type: 'VOUCHER',
       voucherType: 'PAYMENT' as VoucherType,
@@ -28,13 +32,13 @@ export async function suggestJournalEntry(
         { ledgerName: 'Expense A/c', type: 'DEBIT', amount: 0 },
         { ledgerName: 'Cash', type: 'CREDIT', amount: 0 },
       ],
-      message: 'AI service not configured. Please set XAI_API_KEY.',
+      message: 'AI not configured. Add GROQ_API_KEY (free at groq.com).',
       confidence: 0,
     };
   }
 
   const response = await client.chat.completions.create({
-    model: GROK_MODEL,
+    model: MODEL,
     max_tokens: 800,
     messages: [
       { role: 'system', content: SYSTEM_PROMPT },
@@ -77,13 +81,13 @@ export async function generateNarration(
   entries: Array<{ ledgerName: string; type: string; amount: number }>,
   voucherType: string
 ): Promise<string> {
-  if (!process.env.XAI_API_KEY) {
+  if (!AI_KEY()) {
     const amounts = entries.map((e) => `${e.ledgerName}: ₹${e.amount}`).join(', ');
     return `${voucherType} - ${amounts}`;
   }
 
   const response = await client.chat.completions.create({
-    model: GROK_MODEL,
+    model: MODEL,
     max_tokens: 150,
     messages: [
       { role: 'system', content: SYSTEM_PROMPT },
@@ -103,8 +107,8 @@ Return only the narration text, no JSON, max 2 sentences.`,
 export async function detectAnomalies(
   vouchers: Array<{ date: string | Date; type: string; totalAmount: number; number: string }>
 ): Promise<string[]> {
-  if (!process.env.XAI_API_KEY) {
-    return ['AI anomaly detection not configured. Set XAI_API_KEY to enable.'];
+  if (!AI_KEY()) {
+    return ['Add GROQ_API_KEY (free at groq.com) to enable AI anomaly detection.'];
   }
 
   if (vouchers.length === 0) return ['No vouchers to analyze.'];
@@ -117,7 +121,7 @@ export async function detectAnomalies(
   }));
 
   const response = await client.chat.completions.create({
-    model: GROK_MODEL,
+    model: MODEL,
     max_tokens: 1000,
     messages: [
       { role: 'system', content: SYSTEM_PROMPT },
@@ -145,12 +149,12 @@ export async function getReportInsights(
   reportData: Record<string, unknown>,
   reportType: string
 ): Promise<string> {
-  if (!process.env.XAI_API_KEY) {
-    return 'AI insights not configured. Please set XAI_API_KEY.';
+  if (!AI_KEY()) {
+    return 'Add GROQ_API_KEY (free at groq.com) to enable AI report insights.';
   }
 
   const response = await client.chat.completions.create({
-    model: GROK_MODEL,
+    model: MODEL,
     max_tokens: 512,
     messages: [
       { role: 'system', content: SYSTEM_PROMPT },
@@ -171,12 +175,12 @@ export async function classifyLedger(
   ledgerName: string,
   description?: string
 ): Promise<{ groupName: string; nature: string; confidence: number }> {
-  if (!process.env.XAI_API_KEY) {
+  if (!AI_KEY()) {
     return { groupName: 'Indirect Expenses', nature: 'EXPENSES', confidence: 0 };
   }
 
   const response = await client.chat.completions.create({
-    model: GROK_MODEL,
+    model: MODEL,
     max_tokens: 200,
     messages: [
       { role: 'system', content: SYSTEM_PROMPT },
