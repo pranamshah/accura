@@ -1,0 +1,128 @@
+'use client';
+import { useState, useEffect, useCallback } from 'react';
+import { useRouter, useParams } from 'next/navigation';
+import { useTallyStore } from '@/store/tallyStore';
+import { useQuery } from '@tanstack/react-query';
+import { toast } from 'sonner';
+import type { LedgerGroup, Ledger } from '@/types';
+
+export default function AlterLedgerDetailPage() {
+  const router = useRouter();
+  const params = useParams();
+  const id = params.id as string;
+  const { activeCompany } = useTallyStore();
+  const [form, setForm] = useState<Record<string, unknown>>({});
+  const [saving, setSaving] = useState(false);
+
+  const { data: ledgerData } = useQuery<{ ledger: Ledger }>({
+    queryKey: ['ledger', id],
+    queryFn: async () => {
+      const r = await fetch(`/api/ledger/${id}`);
+      return r.json();
+    },
+    enabled: !!id,
+  });
+
+  const { data: groupsData } = useQuery<{ groups: LedgerGroup[] }>({
+    queryKey: ['ledger-groups', activeCompany?.id],
+    queryFn: async () => {
+      if (!activeCompany) return { groups: [] };
+      const r = await fetch(`/api/ledger/groups?companyId=${activeCompany.id}`);
+      return r.json();
+    },
+    enabled: !!activeCompany,
+  });
+
+  useEffect(() => {
+    if (ledgerData?.ledger) {
+      const l = ledgerData.ledger;
+      setForm({
+        name: l.name, alias: l.alias ?? '', groupId: l.groupId,
+        openingBalance: String(l.openingBalance), openingBalanceType: l.openingBalanceType,
+        gstin: l.gstin ?? '', pan: l.pan ?? '', mobileNo: l.mobileNo ?? '',
+        email: l.email ?? '', address: l.address ?? '', city: l.city ?? '',
+        state: l.state ?? '', pincode: l.pincode ?? '',
+        isParty: l.isParty, partyType: l.partyType ?? 'CUSTOMER',
+        gstType: l.gstType ?? 'REGULAR', isActive: l.isActive,
+      });
+    }
+  }, [ledgerData]);
+
+  const handleSave = useCallback(async () => {
+    if (!form.name) { toast.error('Name required'); return; }
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/ledger/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...form, openingBalance: parseFloat(form.openingBalance as string) || 0 }),
+      });
+      if (res.ok) { toast.success('Ledger updated'); router.push('/alter/ledger'); }
+      else { const d = await res.json(); toast.error(d.error || 'Failed'); }
+    } finally { setSaving(false); }
+  }, [form, id, router]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.ctrlKey && e.key.toLowerCase() === 'a') { e.preventDefault(); handleSave(); } };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [handleSave]);
+
+  if (!ledgerData?.ledger) return <div style={{ padding: 16, color: '#a0a0a0' }}>Loading...</div>;
+
+  return (
+    <div>
+      <div className="voucher-header">
+        <div className="voucher-title">ALTER LEDGER: {ledgerData.ledger.name}</div>
+      </div>
+      <div className="tally-form">
+        <div className="tally-form-section">Basic Details</div>
+        {[{ label: 'Name', field: 'name' }, { label: 'Alias', field: 'alias' }].map(({ label, field }) => (
+          <div key={field} className="tally-form-row">
+            <span className="tally-form-label">{label}</span>
+            <div className="tally-form-field">
+              <input value={(form[field] as string) ?? ''} onChange={(e) => setForm((f) => ({ ...f, [field]: e.target.value }))} />
+            </div>
+          </div>
+        ))}
+        <div className="tally-form-row">
+          <span className="tally-form-label">Under Group</span>
+          <div className="tally-form-field">
+            <select value={(form.groupId as string) ?? ''} onChange={(e) => setForm((f) => ({ ...f, groupId: e.target.value }))}>
+              {(groupsData?.groups ?? []).map((g) => <option key={g.id} value={g.id} style={{ background: '#0d1117' }}>{g.name}</option>)}
+            </select>
+          </div>
+        </div>
+        <div className="tally-form-row">
+          <span className="tally-form-label">Opening Balance</span>
+          <div className="tally-form-field" style={{ display: 'flex', gap: 8 }}>
+            <input type="number" value={(form.openingBalance as string) ?? ''} onChange={(e) => setForm((f) => ({ ...f, openingBalance: e.target.value }))} style={{ flex: 1 }} />
+            <select value={(form.openingBalanceType as string) ?? 'DEBIT'} onChange={(e) => setForm((f) => ({ ...f, openingBalanceType: e.target.value }))} style={{ width: 80 }}>
+              <option value="DEBIT" style={{ background: '#0d1117' }}>Dr</option>
+              <option value="CREDIT" style={{ background: '#0d1117' }}>Cr</option>
+            </select>
+          </div>
+        </div>
+        <div className="tally-form-row">
+          <span className="tally-form-label">Status</span>
+          <div className="tally-form-field">
+            <select value={(form.isActive as boolean) ? 'yes' : 'no'} onChange={(e) => setForm((f) => ({ ...f, isActive: e.target.value === 'yes' }))}>
+              <option value="yes" style={{ background: '#0d1117' }}>Active</option>
+              <option value="no" style={{ background: '#0d1117' }}>Inactive</option>
+            </select>
+          </div>
+        </div>
+        <div className="tally-form-actions">
+          <button className="tally-btn primary" onClick={handleSave} disabled={saving}>{saving ? 'Saving...' : 'Accept [Ctrl+A]'}</button>
+          <button className="tally-btn" onClick={() => router.push('/alter/ledger')}>Cancel</button>
+          <button className="tally-btn danger" onClick={async () => {
+            if (!confirm('Delete this ledger?')) return;
+            await fetch(`/api/ledger/${id}`, { method: 'DELETE' });
+            toast.success('Ledger deleted');
+            router.push('/alter/ledger');
+          }}>Delete</button>
+        </div>
+      </div>
+    </div>
+  );
+}
