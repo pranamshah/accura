@@ -135,6 +135,13 @@ function LedgerPageInner() {
         }
       />
       <div className="p-6">
+        {!activeCompany && (
+          <div className="mb-4 p-4 bg-amber-50 border border-amber-200 rounded-lg text-[13px] text-amber-800">
+            <strong>No company selected.</strong> Go to{" "}
+            <a href="/settings/company" className="underline font-medium">Settings → Company</a>{" "}
+            to create or select your company.
+          </div>
+        )}
         {isLoading ? (
           <div className="space-y-2">
             {Array.from({ length: 10 }).map((_, i) => <Skeleton key={i} className="h-10" />)}
@@ -159,11 +166,11 @@ function LedgerPageInner() {
       </div>
 
       <Sheet open={showCreate} onOpenChange={setShowCreate}>
-        <SheetContent className="w-[500px] sm:max-w-[500px]">
-          <SheetHeader>
-            <SheetTitle>Create New Ledger</SheetTitle>
+        <SheetContent className="w-[480px] sm:max-w-[480px] flex flex-col p-0">
+          <SheetHeader className="px-5 pt-5 pb-3 border-b border-border-subtle shrink-0">
+            <SheetTitle className="text-[15px]">Create New Ledger</SheetTitle>
           </SheetHeader>
-          <div className="mt-4">
+          <div className="flex-1 overflow-y-auto px-5 py-4">
             <LedgerForm
               initialData={
                 partyFilter

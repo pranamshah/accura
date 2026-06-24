@@ -98,8 +98,17 @@ export function LedgerForm({ ledgerId, onSuccess, initialData }: LedgerFormProps
     ...(g.children || []).flatMap((c) => [c, ...(c.children || [])]),
   ]);
 
+  if (!activeCompany?.id) {
+    return (
+      <div className="py-8 text-center text-[13px] text-text-muted">
+        <p className="mb-2 font-medium">No company selected</p>
+        <p className="text-[12px]">Please select or create a company first from <br/>Settings → Company.</p>
+      </div>
+    );
+  }
+
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 overflow-y-auto pr-1">
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
       {/* Basic Info */}
       <div className="grid grid-cols-2 gap-3">
         <div className="col-span-2 space-y-1">

@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Save } from "lucide-react";
+import { Save, Plus } from "lucide-react";
 import type { Company } from "@/types";
 
 const STATES = [
@@ -28,42 +28,92 @@ export default function CompanySettingsPage() {
   const { activeCompany, setActiveCompany, companies, setCompanies } = useCompanyStore();
   const queryClient = useQueryClient();
   const [saving, setSaving] = useState(false);
+  const [mode, setMode] = useState<"edit" | "create">("edit");
   const { register, reset, handleSubmit } = useForm();
 
+  // When active company changes, reset form + determine mode
   useEffect(() => {
-    if (activeCompany) reset(activeCompany as never);
+    if (activeCompany) {
+      reset(activeCompany as never);
+      setMode("edit");
+    } else {
+      reset({ financialYearStart: 4 });
+      setMode("create");
+    }
   }, [activeCompany, reset]);
 
   const onSubmit = async (data: Record<string, unknown>) => {
-    if (!activeCompany?.id) {
-      toast.error("No company selected. Please select a company first.");
-      return;
-    }
     setSaving(true);
     try {
-      const res = await fetch("/api/settings", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ companyId: activeCompany.id, ...data }),
-      });
-      if (!res.ok) throw new Error("Failed");
-      const json = await res.json() as { company: Company };
-      // Update active company and companies list with fresh data
-      setActiveCompany(json.company);
-      setCompanies(companies.map((c) => c.id === json.company.id ? json.company : c));
-      // Invalidate all cached queries so dashboard/reports reload with new FY
-      await queryClient.invalidateQueries();
-      toast.success("Company saved!");
-    } catch {
-      toast.error("Failed to save");
+      if (mode === "create" || !activeCompany?.id) {
+        // Create new company
+        const res = await fetch("/api/companies", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: data.name,
+            gstin: data.gstin || undefined,
+            pan: data.pan || undefined,
+            phone: data.phone || undefined,
+            email: data.email || undefined,
+            address: data.address || undefined,
+            city: data.city || undefined,
+            state: data.state || undefined,
+            pincode: data.pincode || undefined,
+            financialYearStart: Number(data.financialYearStart) || 4,
+          }),
+        });
+        if (!res.ok) {
+          const err = await res.json() as { error?: string };
+          throw new Error(err.error ?? "Failed to create company");
+        }
+        const json = await res.json() as { company: Company };
+        const newCompany = json.company;
+        setActiveCompany(newCompany);
+        setCompanies([...companies, newCompany]);
+        await queryClient.invalidateQueries();
+        toast.success("Company created successfully!");
+        setMode("edit");
+      } else {
+        // Update existing company
+        const res = await fetch("/api/settings", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ companyId: activeCompany.id, ...data }),
+        });
+        if (!res.ok) throw new Error("Failed to save");
+        const json = await res.json() as { company: Company };
+        setActiveCompany(json.company);
+        setCompanies(companies.map((c) => c.id === json.company.id ? json.company : c));
+        await queryClient.invalidateQueries();
+        toast.success("Company saved!");
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to save");
     } finally {
       setSaving(false);
     }
   };
 
+  const isCreate = mode === "create";
+
   return (
     <div>
-      <PageHeader title="Company Settings" subtitle="Manage company information" />
+      <PageHeader
+        title={isCreate ? "Create Company" : "Company Settings"}
+        subtitle={isCreate ? "Set up your company to get started" : "Manage company information"}
+      />
+      {!isCreate && (
+        <div className="px-6 pb-2">
+          <button
+            type="button"
+            onClick={() => { reset({ financialYearStart: 4 }); setMode("create"); }}
+            className="flex items-center gap-1.5 text-[12px] text-primary hover:underline"
+          >
+            <Plus size={13} /> Add another company
+          </button>
+        </div>
+      )}
       <div className="p-6 max-w-2xl">
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           {/* Basic Info */}
@@ -72,23 +122,23 @@ export default function CompanySettingsPage() {
             <div className="grid grid-cols-2 gap-4">
               <div className="col-span-2 space-y-1">
                 <Label className="text-[11px]">Company Name *</Label>
-                <Input className="h-9 text-[12px]" {...register("name")} />
+                <Input className="h-9 text-[12px]" placeholder="e.g. ABC Enterprises Pvt Ltd" {...register("name", { required: true })} />
               </div>
               <div className="space-y-1">
                 <Label className="text-[11px]">GSTIN</Label>
-                <Input className="h-9 text-[12px] font-mono uppercase" {...register("gstin")} />
+                <Input className="h-9 text-[12px] font-mono uppercase" placeholder="27AABCA1234F1Z5" {...register("gstin")} />
               </div>
               <div className="space-y-1">
                 <Label className="text-[11px]">PAN</Label>
-                <Input className="h-9 text-[12px] font-mono uppercase" {...register("pan")} />
+                <Input className="h-9 text-[12px] font-mono uppercase" placeholder="AABCA1234F" {...register("pan")} />
               </div>
               <div className="space-y-1">
                 <Label className="text-[11px]">Phone</Label>
-                <Input className="h-9 text-[12px]" {...register("phone")} />
+                <Input className="h-9 text-[12px]" placeholder="+91 98765 43210" {...register("phone")} />
               </div>
               <div className="space-y-1">
                 <Label className="text-[11px]">Email</Label>
-                <Input className="h-9 text-[12px]" type="email" {...register("email")} />
+                <Input className="h-9 text-[12px]" type="email" placeholder="company@example.com" {...register("email")} />
               </div>
             </div>
           </div>
@@ -99,7 +149,7 @@ export default function CompanySettingsPage() {
             <div className="grid grid-cols-2 gap-4">
               <div className="col-span-2 space-y-1">
                 <Label className="text-[11px]">Address</Label>
-                <Input className="h-9 text-[12px]" {...register("address")} />
+                <Input className="h-9 text-[12px]" placeholder="Street address" {...register("address")} />
               </div>
               <div className="space-y-1">
                 <Label className="text-[11px]">City</Label>
@@ -117,7 +167,7 @@ export default function CompanySettingsPage() {
               </div>
               <div className="space-y-1">
                 <Label className="text-[11px]">Pincode</Label>
-                <Input className="h-9 text-[12px] font-mono" {...register("pincode")} />
+                <Input className="h-9 text-[12px] font-mono" placeholder="400001" {...register("pincode")} />
               </div>
             </div>
           </div>
@@ -142,8 +192,8 @@ export default function CompanySettingsPage() {
           </div>
 
           <Button type="submit" className="bg-primary gap-1" disabled={saving}>
-            <Save size={14} />
-            {saving ? "Saving..." : "Save Company"}
+            {isCreate ? <><Plus size={14} /> Create Company</> : <><Save size={14} /> Save Company</>}
+            {saving && "..."}
           </Button>
         </form>
       </div>
