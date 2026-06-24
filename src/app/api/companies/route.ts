@@ -1,6 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import sql from '@/lib/db';
 import { z } from 'zod';
+import { readToken, SESSION_COOKIE } from '@/lib/session';
+
+function getUserIdFromRequest(req: NextRequest): string | null {
+  const token = req.cookies.get(SESSION_COOKIE)?.value;
+  if (!token) return null;
+  const payload = readToken(token);
+  return payload?.userId ?? null;
+}
 
 const companySchema = z.object({
   name: z.string().min(1),
@@ -26,11 +34,14 @@ const companySchema = z.object({
   taxRegistered: z.boolean().default(true),
 });
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const userId = getUserIdFromRequest(req) ?? req.nextUrl.searchParams.get('userId');
+  if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
   const companies = await sql`
     SELECT c.* FROM companies c
     JOIN company_users cu ON c.id = cu.company_id
-    WHERE cu.user_id = ${'owner'}
+    WHERE cu.user_id = ${userId}
     ORDER BY c.created_at DESC
   `;
 
@@ -45,7 +56,8 @@ export async function POST(req: NextRequest) {
   }
 
   const d = parsed.data;
-  const userId = 'owner';
+  const userId = getUserIdFromRequest(req) ?? (body as { userId?: string }).userId;
+  if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const companyId = crypto.randomUUID();
 
   const groupDefs: Array<{ name: string; nature: string; parent?: string }> = [

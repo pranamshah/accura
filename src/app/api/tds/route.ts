@@ -29,3 +29,17 @@ export async function GET(req: NextRequest) {
     totalDue,
   });
 }
+
+export async function PATCH(req: NextRequest) {
+  const body = await req.json() as { id: string; deposited: boolean; challanNo?: string; challanDate?: string };
+  const { id, deposited, challanNo, challanDate } = body;
+  if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
+
+  await sql`
+    UPDATE tds_entries
+    SET deposited = ${deposited}, challan_no = ${challanNo ?? null}, challan_date = ${challanDate ?? null}
+    WHERE id = ${id}
+  `;
+
+  return NextResponse.json({ success: true });
+}
