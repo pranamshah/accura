@@ -17,6 +17,16 @@ interface CompanyState {
 
 const defaultFY = getFinancialYear();
 
+// Handle both camelCase (financialYearStart) and snake_case (financial_year_start)
+// in case old persist data is still in localStorage
+function getFYStart(company: Company): number {
+  return (
+    (company as unknown as Record<string, unknown>).financialYearStart as number ??
+    (company as unknown as Record<string, unknown>).financial_year_start as number ??
+    4
+  );
+}
+
 export const useCompanyStore = create<CompanyState>()(
   persist(
     (set) => ({
@@ -24,18 +34,20 @@ export const useCompanyStore = create<CompanyState>()(
       financialYear: defaultFY,
       companies: [],
       setActiveCompany: (company) => {
-        const fy = getFinancialYear(new Date(), company.financialYearStart);
+        const fyStart = getFYStart(company);
+        const fy = getFinancialYear(new Date(), fyStart);
         set({ activeCompany: company, financialYear: fy });
       },
       setCompanies: (companies) => set({ companies }),
       setFinancialYear: (fy) => set({ financialYear: fy }),
-      clearCompany: () => set({ activeCompany: null }),
+      clearCompany: () => set({ activeCompany: null, companies: [] }),
     }),
     {
-      name: "accura-company",
+      name: "accura-company-v2", // v2 = bump clears any stale v1 snake_case data
       partialize: (state) => ({
         activeCompany: state.activeCompany,
         financialYear: state.financialYear,
+        companies: state.companies,
       }),
     }
   )

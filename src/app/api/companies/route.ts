@@ -130,5 +130,5 @@ export async function POST(req: NextRequest) {
 
   const rows = await sql`SELECT * FROM companies WHERE id = ${companyId}`;
 
-  return NextResponse.json({ company: rows[0] }, { status: 201 });
+  return NextResponse.json({ company: transformRows<Company>(rows as Record<string, unknown>[])[0] }, { status: 201 });
 }

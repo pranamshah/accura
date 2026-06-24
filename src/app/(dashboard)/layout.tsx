@@ -9,7 +9,7 @@ import { Providers } from "@/app/providers";
 import type { Company } from "@/types";
 
 function CompanyLoader() {
-  const { activeCompany, setActiveCompany, setCompanies } = useCompanyStore();
+  const { setActiveCompany, setCompanies } = useCompanyStore();
 
   useEffect(() => {
     async function load() {
@@ -17,10 +17,14 @@ function CompanyLoader() {
         const res = await fetch("/api/companies");
         if (!res.ok) return;
         const data = await res.json() as { companies: Company[] };
+        if (data.companies.length === 0) return;
         setCompanies(data.companies);
-        if (!activeCompany && data.companies.length > 0) {
-          setActiveCompany(data.companies[0]);
-        }
+        // Always refresh activeCompany with latest DB data
+        const currentId = useCompanyStore.getState().activeCompany?.id;
+        const refreshed = currentId
+          ? (data.companies.find((c) => c.id === currentId) ?? data.companies[0])
+          : data.companies[0];
+        setActiveCompany(refreshed);
       } catch {
         // silently fail — user might not be authenticated yet
       }

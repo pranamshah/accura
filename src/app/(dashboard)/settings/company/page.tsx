@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
+import { useQueryClient } from "@tanstack/react-query";
 import { useCompanyStore } from "@/store/companyStore";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { Button } from "@/components/ui/button";
@@ -24,7 +25,8 @@ const FY_MONTHS = [
 ];
 
 export default function CompanySettingsPage() {
-  const { activeCompany, setActiveCompany } = useCompanyStore();
+  const { activeCompany, setActiveCompany, companies, setCompanies } = useCompanyStore();
+  const queryClient = useQueryClient();
   const [saving, setSaving] = useState(false);
   const { register, reset, handleSubmit } = useForm();
 
@@ -33,7 +35,10 @@ export default function CompanySettingsPage() {
   }, [activeCompany, reset]);
 
   const onSubmit = async (data: Record<string, unknown>) => {
-    if (!activeCompany?.id) return;
+    if (!activeCompany?.id) {
+      toast.error("No company selected. Please select a company first.");
+      return;
+    }
     setSaving(true);
     try {
       const res = await fetch("/api/settings", {
@@ -43,7 +48,11 @@ export default function CompanySettingsPage() {
       });
       if (!res.ok) throw new Error("Failed");
       const json = await res.json() as { company: Company };
+      // Update active company and companies list with fresh data
       setActiveCompany(json.company);
+      setCompanies(companies.map((c) => c.id === json.company.id ? json.company : c));
+      // Invalidate all cached queries so dashboard/reports reload with new FY
+      await queryClient.invalidateQueries();
       toast.success("Company saved!");
     } catch {
       toast.error("Failed to save");
