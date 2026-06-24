@@ -48,6 +48,7 @@ export async function PUT(req: NextRequest) {
       bank_name = COALESCE(${data.bankName as string ?? null}, bank_name),
       bank_account = COALESCE(${data.bankAccount as string ?? null}, bank_account),
       bank_ifsc = COALESCE(${data.bankIfsc as string ?? null}, bank_ifsc),
+      financial_year_start = COALESCE(${data.financialYearStart != null ? Number(data.financialYearStart) : null}, financial_year_start),
       updated_at = NOW()
     WHERE id = ${companyId}
     RETURNING *
