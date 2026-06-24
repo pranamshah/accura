@@ -1,11 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@/lib/auth';
 import sql from '@/lib/db';
 
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
   const body = await req.json() as {
     bankAccountId: string;
     transactions: Array<{ date: string; description: string; amount: number; type: 'DEBIT' | 'CREDIT' }>;
@@ -29,9 +25,6 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PUT(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
   const body = await req.json() as { id: string; isReconciled: boolean; voucherId?: string };
   const { id, isReconciled, voucherId } = body;
 

@@ -1,12 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@/lib/auth';
 import sql from '@/lib/db';
 import { suggestJournalEntry } from '@/lib/ai';
 
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
   const body = await req.json() as { prompt: string; companyId: string };
   const { prompt, companyId } = body;
 
@@ -27,7 +23,7 @@ export async function POST(req: NextRequest) {
   if (companyId) {
     await sql`
       INSERT INTO ai_entries (id, company_id, user_id, prompt, response, type)
-      VALUES (gen_random_uuid()::text, ${companyId}, ${session.user.id}, ${prompt}, ${JSON.stringify(suggestion)}, 'ENTRY_SUGGESTION')
+      VALUES (gen_random_uuid()::text, ${companyId}, ${'owner'}, ${prompt}, ${JSON.stringify(suggestion)}, 'ENTRY_SUGGESTION')
     `;
   }
 

@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@/lib/auth';
 import sql from '@/lib/db';
 import { z } from 'zod';
 import { generateVoucherNumber, getFinancialYear } from '@/lib/utils';
@@ -63,9 +62,6 @@ const voucherSchema = z.object({
 });
 
 export async function GET(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
   const { searchParams } = new URL(req.url);
   const companyId = searchParams.get('companyId');
   const type = searchParams.get('type');
@@ -136,9 +132,6 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
   const body = await req.json() as Record<string, unknown>;
   const parsed = voucherSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
@@ -198,7 +191,7 @@ export async function POST(req: NextRequest) {
 
   await sql`
     INSERT INTO audit_logs (id, user_id, company_id, action, entity, entity_id, new_data)
-    VALUES (${crypto.randomUUID()}, ${session.user.id}, ${data.companyId}, 'CREATE', 'Voucher', ${voucher.id}, ${JSON.stringify({ type: data.type, number, amount: totalDr })})
+    VALUES (${crypto.randomUUID()}, ${'owner'}, ${data.companyId}, 'CREATE', 'Voucher', ${voucher.id}, ${JSON.stringify({ type: data.type, number, amount: totalDr })})
   `;
 
   return NextResponse.json({ voucher }, { status: 201 });

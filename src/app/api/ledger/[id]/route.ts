@@ -1,11 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@/lib/auth';
 import sql from '@/lib/db';
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
   const { id } = await params;
 
   const rows = await sql`
@@ -42,9 +38,6 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 }
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
   const { id } = await params;
   const body = await req.json() as Record<string, unknown>;
 
@@ -86,16 +79,13 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
   await sql`
     INSERT INTO audit_logs (id, user_id, company_id, action, entity, entity_id, old_data, new_data)
-    VALUES (gen_random_uuid()::text, ${session.user.id}, ${ledger.company_id}, 'UPDATE', 'Ledger', ${id}, ${JSON.stringify(old)}, ${JSON.stringify(body)})
+    VALUES (gen_random_uuid()::text, ${'owner'}, ${ledger.company_id}, 'UPDATE', 'Ledger', ${id}, ${JSON.stringify(old)}, ${JSON.stringify(body)})
   `;
 
   return NextResponse.json({ ledger: { ...ledger, group: grpRows[0] } });
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
   const { id } = await params;
 
   const rows = await sql`SELECT id, is_system FROM ledgers WHERE id = ${id} LIMIT 1`;

@@ -1,7 +1,6 @@
 "use client";
 
-import { useSession, signOut } from "next-auth/react";
-import { Menu, Bell, Search, Moon, Sun, LogOut, User, ChevronDown, Building2 } from "lucide-react";
+import { Menu, Bell, Search, Moon, Sun, User, ChevronDown, Building2 } from "lucide-react";
 import { useUIStore } from "@/store/uiStore";
 import { useCompanyStore } from "@/store/companyStore";
 import { useTheme } from "next-themes";
@@ -18,7 +17,6 @@ import Link from "next/link";
 export function TopBar() {
   const { toggleSidebar } = useUIStore();
   const { activeCompany, companies, setActiveCompany } = useCompanyStore();
-  const { data: session } = useSession();
   const { theme, setTheme } = useTheme();
 
   return (
@@ -93,20 +91,16 @@ export function TopBar() {
         <DropdownMenuTrigger asChild>
           <Button variant="ghost" className="h-8 gap-2 text-[13px]">
             <div className="w-7 h-7 bg-primary/10 rounded-full flex items-center justify-center">
-              <span className="text-primary text-[11px] font-bold">
-                {session?.user?.name?.[0]?.toUpperCase() || "U"}
-              </span>
+              <span className="text-primary text-[11px] font-bold">P</span>
             </div>
-            <span className="hidden md:block truncate max-w-[100px]">
-              {session?.user?.name || session?.user?.email}
-            </span>
+            <span className="hidden md:block truncate max-w-[100px]">Pranam</span>
             <ChevronDown size={12} className="text-text-muted" />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-48">
           <div className="px-2 py-1.5">
-            <p className="text-[13px] font-medium">{session?.user?.name}</p>
-            <p className="text-[11px] text-text-muted">{session?.user?.email}</p>
+            <p className="text-[13px] font-medium">Pranam Shah</p>
+            <p className="text-[11px] text-text-muted">shahpranam31@gmail.com</p>
           </div>
           <DropdownMenuSeparator />
           <DropdownMenuItem asChild>
@@ -114,14 +108,6 @@ export function TopBar() {
               <User size={14} className="mr-2" />
               Profile
             </Link>
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem
-            onClick={() => signOut({ callbackUrl: "/login" })}
-            className="text-[13px] text-error"
-          >
-            <LogOut size={14} className="mr-2" />
-            Sign Out
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@/lib/auth';
 import sql from '@/lib/db';
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const { id } = await params;
   const rows = await sql`SELECT e.*, pg.name as group_name FROM employees e LEFT JOIN payroll_groups pg ON e.group_id = pg.id WHERE e.id = ${id} LIMIT 1`;
   if (rows.length === 0) return NextResponse.json({ error: 'Not found' }, { status: 404 });
@@ -14,8 +11,6 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 }
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const { id } = await params;
   const body = await req.json() as Record<string, unknown>;
 
@@ -44,8 +39,6 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const { id } = await params;
   await sql`UPDATE employees SET is_active = false WHERE id = ${id}`;
   return NextResponse.json({ success: true });

@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@/lib/auth';
 import sql from '@/lib/db';
 import { z } from 'zod';
 
@@ -28,15 +27,10 @@ const companySchema = z.object({
 });
 
 export async function GET() {
-  const session = await auth();
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
   const companies = await sql`
     SELECT c.* FROM companies c
     JOIN company_users cu ON c.id = cu.company_id
-    WHERE cu.user_id = ${session.user.id}
+    WHERE cu.user_id = ${'owner'}
     ORDER BY c.created_at DESC
   `;
 
@@ -44,11 +38,6 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
   const body = await req.json() as Record<string, unknown>;
   const parsed = companySchema.safeParse(body);
   if (!parsed.success) {
@@ -56,7 +45,7 @@ export async function POST(req: NextRequest) {
   }
 
   const d = parsed.data;
-  const userId = session.user.id;
+  const userId = 'owner';
   const companyId = crypto.randomUUID();
 
   const groupDefs: Array<{ name: string; nature: string; parent?: string }> = [
