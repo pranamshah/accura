@@ -49,6 +49,7 @@ const navItems: NavItem[] = [
     { label: "GSTR-3B", href: "/gst/gstr3b", icon: <FileText size={14} /> },
     { label: "GSTR-2B", href: "/gst/gstr2b", icon: <FileText size={14} /> },
     { label: "E-Invoice", href: "/gst/einvoice", icon: <FileText size={14} /> },
+    { label: "IMS", href: "/gst/ims", icon: <FileText size={14} /> },
   ]},
 
   { label: "Payroll", href: "/payroll", icon: <UserCheck size={16} />, children: [
@@ -70,6 +71,7 @@ const navItems: NavItem[] = [
     { label: "Day Book", href: "/reports/daybook", icon: <BookOpen size={14} /> },
     { label: "Outstanding", href: "/reports/outstanding", icon: <Users size={14} /> },
     { label: "Cash Flow", href: "/reports/cash-flow", icon: <Wallet size={14} /> },
+    { label: "Ratio Analysis", href: "/reports/ratio-analysis", icon: <TrendingUp size={14} /> },
   ]},
 
   { label: "Settings", href: "/settings", icon: <Settings size={16} />, children: [
