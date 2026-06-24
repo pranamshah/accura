@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import sql from '@/lib/db';
+import { transformRow } from '@/lib/db/transform';
+import type { Company } from '@/types';
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -16,7 +18,7 @@ export async function GET(req: NextRequest) {
   `;
 
   return NextResponse.json({
-    company: companyRows[0],
+    company: transformRow<Company>(companyRows[0] as Record<string, unknown>),
     users: (users as { user_id: string; user_name: string; user_email: string; user_role: string; user_avatar: string | null }[]).map((u) => ({
       ...u,
       user: { id: u.user_id, name: u.user_name, email: u.user_email, role: u.user_role, avatar: u.user_avatar },
@@ -54,5 +56,5 @@ export async function PUT(req: NextRequest) {
     RETURNING *
   `;
 
-  return NextResponse.json({ company: rows[0] });
+  return NextResponse.json({ company: transformRow<Company>(rows[0] as Record<string, unknown>) });
 }

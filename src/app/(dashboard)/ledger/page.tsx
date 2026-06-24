@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, Suspense } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useCompanyStore } from "@/store/companyStore";
 import { PageHeader } from "@/components/shared/PageHeader";
@@ -12,31 +12,44 @@ import { formatCurrency } from "@/lib/utils";
 import type { Ledger } from "@/types";
 import type { ColumnDef } from "@tanstack/react-table";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { LedgerForm } from "@/components/ledger/LedgerForm";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 
-const natureColors = {
+const natureColors: Record<string, string> = {
   ASSETS: "bg-blue-100 text-blue-700",
   LIABILITIES: "bg-purple-100 text-purple-700",
   INCOME: "bg-green-100 text-green-700",
   EXPENSES: "bg-red-100 text-red-700",
 };
 
-export default function LedgerPage() {
+function LedgerPageInner() {
   const { activeCompany } = useCompanyStore();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const partyFilter = searchParams.get("party"); // CUSTOMER | SUPPLIER | null
   const [showCreate, setShowCreate] = useState(false);
 
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ["ledgers", activeCompany?.id],
+    queryKey: ["ledgers", activeCompany?.id, partyFilter],
     queryFn: async () => {
       if (!activeCompany?.id) return { ledgers: [] };
-      const res = await fetch(`/api/ledger?companyId=${activeCompany.id}`);
+      const params = new URLSearchParams({ companyId: activeCompany.id, limit: "200" });
+      if (partyFilter) params.set("isParty", "true");
+      const res = await fetch(`/api/ledger?${params}`);
+      if (!res.ok) return { ledgers: [] };
       return res.json() as Promise<{ ledgers: Ledger[] }>;
     },
     enabled: !!activeCompany?.id,
   });
+
+  // Client-side party type filter
+  const ledgers = (data?.ledgers ?? []).filter((l) => {
+    if (!partyFilter) return true;
+    return l.partyType === partyFilter || l.partyType === "BOTH";
+  });
+
+  const partyLabel = partyFilter === "CUSTOMER" ? "Customers" : partyFilter === "SUPPLIER" ? "Suppliers" : null;
 
   const columns: ColumnDef<Ledger>[] = [
     {
@@ -54,52 +67,67 @@ export default function LedgerPage() {
     {
       id: "group",
       header: "Group",
-      accessorFn: (row) => row.group?.name || "",
-      cell: ({ row }) => <span className="text-text-secondary">{row.original.group?.name}</span>,
+      accessorFn: (row) => (row.group as { name?: string } | undefined)?.name ?? "",
+      cell: ({ row }) => (
+        <span className="text-text-secondary">
+          {(row.original.group as { name?: string } | undefined)?.name ?? "—"}
+        </span>
+      ),
     },
     {
       id: "nature",
       header: "Nature",
-      accessorFn: (row) => row.group?.nature || "",
-      cell: ({ row }) => (
-        <Badge className={`text-[10px] ${natureColors[row.original.group?.nature || "ASSETS"]}`}>
-          {row.original.group?.nature}
-        </Badge>
-      ),
+      accessorFn: (row) => (row.group as { nature?: string } | undefined)?.nature ?? "",
+      cell: ({ row }) => {
+        const nature = ((row.original.group as { nature?: string } | undefined)?.nature ?? "") as keyof typeof natureColors;
+        return nature ? (
+          <Badge className={`text-[10px] ${natureColors[nature] ?? ""}`}>{nature}</Badge>
+        ) : null;
+      },
     },
     {
       accessorKey: "openingBalance",
       header: "Opening Balance",
       cell: ({ row }) => (
         <span className="font-mono text-[12px]">
-          {formatCurrency(row.original.openingBalance)} {row.original.openingBalanceType === "DEBIT" ? "Dr" : "Cr"}
+          {formatCurrency(Number(row.original.openingBalance))} {row.original.openingBalanceType === "DEBIT" ? "Dr" : "Cr"}
         </span>
       ),
     },
     {
       id: "gstin",
       header: "GSTIN",
-      cell: ({ row }) => <span className="font-mono text-[11px]">{row.original.gstin || "—"}</span>,
+      cell: ({ row }) => (
+        <span className="font-mono text-[11px]">{row.original.gstin ?? "—"}</span>
+      ),
     },
     {
       accessorKey: "isParty",
       header: "Type",
-      cell: ({ row }) => row.original.isParty ? (
-        <Badge variant="outline" className="text-[10px]">{row.original.partyType}</Badge>
-      ) : null,
+      cell: ({ row }) =>
+        row.original.isParty ? (
+          <Badge variant="outline" className="text-[10px]">{row.original.partyType}</Badge>
+        ) : null,
     },
   ];
+
+  const title = partyLabel ? `${partyLabel}` : "Chart of Accounts";
+  const subtitle = partyLabel
+    ? `${ledgers.length} ${partyLabel.toLowerCase()} ledgers`
+    : `${ledgers.length} ledger accounts`;
 
   return (
     <div>
       <PageHeader
-        title="Chart of Accounts"
-        subtitle={`${data?.ledgers?.length || 0} ledger accounts`}
+        title={title}
+        subtitle={subtitle}
         actions={
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={() => router.push("/ledger/groups")}>
-              Groups
-            </Button>
+            {!partyFilter && (
+              <Button variant="outline" size="sm" onClick={() => router.push("/ledger/groups")}>
+                Groups
+              </Button>
+            )}
             <Button size="sm" className="bg-primary gap-1" onClick={() => setShowCreate(true)}>
               <Plus size={14} /> New Ledger
             </Button>
@@ -111,7 +139,7 @@ export default function LedgerPage() {
           <div className="space-y-2">
             {Array.from({ length: 10 }).map((_, i) => <Skeleton key={i} className="h-10" />)}
           </div>
-        ) : (data?.ledgers || []).length === 0 ? (
+        ) : ledgers.length === 0 ? (
           <div className="text-center py-16">
             <BookOpen className="w-10 h-10 text-text-muted mx-auto mb-3" />
             <p className="text-[14px] font-medium mb-4">No ledgers found</p>
@@ -121,10 +149,10 @@ export default function LedgerPage() {
           </div>
         ) : (
           <DataTable
-            data={data?.ledgers || []}
+            data={ledgers}
             columns={columns}
             searchable
-            searchPlaceholder="Search ledgers..."
+            searchPlaceholder={`Search ${partyLabel?.toLowerCase() ?? "ledgers"}...`}
             onRowClick={(row) => router.push(`/ledger/${row.id}`)}
           />
         )}
@@ -137,14 +165,24 @@ export default function LedgerPage() {
           </SheetHeader>
           <div className="mt-4">
             <LedgerForm
-              onSuccess={() => {
-                setShowCreate(false);
-                refetch();
-              }}
+              initialData={
+                partyFilter
+                  ? { isParty: true, partyType: partyFilter as "CUSTOMER" | "SUPPLIER" }
+                  : undefined
+              }
+              onSuccess={() => { setShowCreate(false); void refetch(); }}
             />
           </div>
         </SheetContent>
       </Sheet>
     </div>
+  );
+}
+
+export default function LedgerPage() {
+  return (
+    <Suspense fallback={<div className="p-6"><Skeleton className="h-96" /></div>}>
+      <LedgerPageInner />
+    </Suspense>
   );
 }

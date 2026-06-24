@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import sql from '@/lib/db';
+import { transformRow, transformRows } from '@/lib/db/transform';
 import { z } from 'zod';
+import type { Ledger } from '@/types';
 
 const ledgerSchema = z.object({
   companyId: z.string(),
@@ -63,8 +65,8 @@ export async function GET(req: NextRequest) {
       ${isParty !== null ? sql`AND l.is_party = ${isParty === 'true'}` : sql``}
   `;
 
-  const withGroup = ledgers.map((l) => ({
-    ...l,
+  const withGroup = (ledgers as Record<string, unknown>[]).map((l) => ({
+    ...transformRow<Ledger>(l),
     group: { id: l.group_id, name: l.group_name, nature: l.group_nature },
   }));
 
@@ -102,5 +104,5 @@ export async function POST(req: NextRequest) {
     VALUES (gen_random_uuid()::text, ${'owner'}, ${d.companyId}, 'CREATE', 'Ledger', ${(ledger as { id: string }).id}, ${JSON.stringify(d)})
   `;
 
-  return NextResponse.json({ ledger: { ...ledger, group } }, { status: 201 });
+  return NextResponse.json({ ledger: { ...transformRow<Ledger>(ledger as Record<string, unknown>), group } }, { status: 201 });
 }

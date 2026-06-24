@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import sql from '@/lib/db';
+import { transformRow } from '@/lib/db/transform';
+import type { Ledger } from '@/types';
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -13,7 +15,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   `;
 
   if (rows.length === 0) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-  const ledger = { ...rows[0], group: { id: rows[0].group_id, name: rows[0].group_name, nature: rows[0].group_nature } };
+  const raw = rows[0] as Record<string, unknown>;
+  const ledger = { ...transformRow<Ledger>(raw), group: { id: raw.group_id, name: raw.group_name, nature: raw.group_nature } };
 
   const { searchParams } = new URL(req.url);
   const from = searchParams.get('from');
@@ -21,16 +24,24 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const includeStatement = searchParams.get('statement') === 'true';
 
   if (includeStatement) {
-    const entries = await sql`
-      SELECT ve.*, v.date, v.type, v.number, v.narration as voucher_narration, v.status
+    const entryRows = await sql`
+      SELECT ve.id, ve.type, ve.amount, ve.narration,
+             v.id as voucher_id, v.date as voucher_date, v.type as voucher_type, v.number as voucher_number
       FROM voucher_entries ve
       JOIN vouchers v ON ve.voucher_id = v.id
       WHERE ve.ledger_id = ${id}
         AND v.status = 'ACTIVE'
         ${from ? sql`AND v.date >= ${from}` : sql``}
         ${to ? sql`AND v.date <= ${to}` : sql``}
-      ORDER BY v.date ASC
+      ORDER BY v.date ASC, v.created_at ASC
     `;
+    const entries = (entryRows as Record<string, unknown>[]).map((e) => ({
+      id: e.id,
+      type: e.type,
+      amount: e.amount,
+      narration: e.narration,
+      voucher: { id: e.voucher_id, date: e.voucher_date, type: e.voucher_type, number: e.voucher_number },
+    }));
     return NextResponse.json({ ledger, entries });
   }
 

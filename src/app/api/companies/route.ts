@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import sql from '@/lib/db';
+import { transformRows } from '@/lib/db/transform';
 import { z } from 'zod';
 import { readToken, SESSION_COOKIE } from '@/lib/session';
+import type { Company } from '@/types';
 
 function getUserIdFromRequest(req: NextRequest): string | null {
   const token = req.cookies.get(SESSION_COOKIE)?.value;
@@ -38,14 +40,14 @@ export async function GET(req: NextRequest) {
   const userId = getUserIdFromRequest(req) ?? req.nextUrl.searchParams.get('userId');
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const companies = await sql`
+  const rows = await sql`
     SELECT c.* FROM companies c
     JOIN company_users cu ON c.id = cu.company_id
     WHERE cu.user_id = ${userId}
     ORDER BY c.created_at DESC
   `;
 
-  return NextResponse.json({ companies });
+  return NextResponse.json({ companies: transformRows<Company>(rows as Record<string, unknown>[]) });
 }
 
 export async function POST(req: NextRequest) {

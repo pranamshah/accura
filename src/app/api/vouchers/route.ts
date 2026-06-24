@@ -194,5 +194,31 @@ export async function POST(req: NextRequest) {
     VALUES (${crypto.randomUUID()}, ${'owner'}, ${data.companyId}, 'CREATE', 'Voucher', ${voucher.id}, ${JSON.stringify({ type: data.type, number, amount: totalDr })})
   `;
 
+  // Payroll interconnection: if this is a PAYMENT/PAYROLL voucher, check if any credited
+  // ledger matches an employee name → auto-mark their payroll entry as paid
+  if (data.type === 'PAYMENT' || data.type === 'PAYROLL') {
+    const creditLedgerIds = data.entries.filter(e => e.type === 'CREDIT').map(e => e.ledgerId);
+    if (creditLedgerIds.length > 0) {
+      for (const ledgerId of creditLedgerIds) {
+        const ledgerRows = await sql`SELECT name FROM ledgers WHERE id = ${ledgerId} LIMIT 1`;
+        if (ledgerRows.length === 0) continue;
+        const ledgerName = (ledgerRows[0] as { name: string }).name;
+        // Find employee with same name
+        const empRows = await sql`
+          SELECT id FROM employees WHERE company_id = ${data.companyId} AND name = ${ledgerName} AND is_active = true LIMIT 1
+        `;
+        if (empRows.length === 0) continue;
+        const empId = (empRows[0] as { id: string }).id;
+        // Mark most recent unpaid payroll entry as paid
+        const voucherDate = new Date(data.date);
+        await sql`
+          UPDATE payroll_entries SET is_paid = true, paid_on = ${data.date}
+          WHERE employee_id = ${empId} AND is_paid = false
+            AND month = ${voucherDate.getMonth() + 1} AND year = ${voucherDate.getFullYear()}
+        `;
+      }
+    }
+  }
+
   return NextResponse.json({ voucher }, { status: 201 });
 }
