@@ -1,7 +1,7 @@
-import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
-import prisma from "@/lib/db/prisma";
-import { z } from "zod";
+import { NextRequest, NextResponse } from 'next/server';
+import { auth } from '@/lib/auth';
+import sql from '@/lib/db';
+import { z } from 'zod';
 
 const ledgerSchema = z.object({
   companyId: z.string(),
@@ -9,7 +9,7 @@ const ledgerSchema = z.object({
   name: z.string().min(1),
   alias: z.string().optional(),
   openingBalance: z.number().default(0),
-  openingBalanceType: z.enum(["DEBIT", "CREDIT"]).default("DEBIT"),
+  openingBalanceType: z.enum(['DEBIT', 'CREDIT']).default('DEBIT'),
   gstin: z.string().optional(),
   pan: z.string().optional(),
   mobileNo: z.string().optional(),
@@ -22,8 +22,8 @@ const ledgerSchema = z.object({
   creditLimit: z.number().optional(),
   creditDays: z.number().optional(),
   isParty: z.boolean().default(false),
-  partyType: z.enum(["CUSTOMER", "SUPPLIER", "BOTH"]).optional(),
-  gstType: z.enum(["REGULAR", "COMPOSITION", "UNREGISTERED", "CONSUMER", "OVERSEAS", "SEZ"]).optional(),
+  partyType: z.enum(['CUSTOMER', 'SUPPLIER', 'BOTH']).optional(),
+  gstType: z.enum(['REGULAR', 'COMPOSITION', 'UNREGISTERED', 'CONSUMER', 'OVERSEAS', 'SEZ']).optional(),
   tdsApplicable: z.boolean().default(false),
   tdsSectionId: z.string().optional(),
   bankName: z.string().optional(),
@@ -33,64 +33,81 @@ const ledgerSchema = z.object({
 
 export async function GET(req: NextRequest) {
   const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const { searchParams } = new URL(req.url);
-  const companyId = searchParams.get("companyId");
-  const search = searchParams.get("search") || "";
-  const groupId = searchParams.get("groupId");
-  const isParty = searchParams.get("isParty");
-  const page = parseInt(searchParams.get("page") || "1");
-  const limit = parseInt(searchParams.get("limit") || "100");
+  const companyId = searchParams.get('companyId');
+  const search = searchParams.get('search') || '';
+  const groupId = searchParams.get('groupId');
+  const isParty = searchParams.get('isParty');
+  const page = parseInt(searchParams.get('page') || '1');
+  const limit = parseInt(searchParams.get('limit') || '100');
+  const offset = (page - 1) * limit;
 
-  if (!companyId) return NextResponse.json({ error: "companyId required" }, { status: 400 });
+  if (!companyId) return NextResponse.json({ error: 'companyId required' }, { status: 400 });
 
-  const where = {
-    companyId,
-    ...(search ? { name: { contains: search, mode: "insensitive" as const } } : {}),
-    ...(groupId ? { groupId } : {}),
-    ...(isParty !== null ? { isParty: isParty === "true" } : {}),
-    isActive: true,
-  };
+  const ledgers = await sql`
+    SELECT l.*, lg.name as group_name, lg.nature as group_nature
+    FROM ledgers l
+    JOIN ledger_groups lg ON l.group_id = lg.id
+    WHERE l.company_id = ${companyId}
+      AND l.is_active = true
+      ${search ? sql`AND l.name ILIKE ${'%' + search + '%'}` : sql``}
+      ${groupId ? sql`AND l.group_id = ${groupId}` : sql``}
+      ${isParty !== null ? sql`AND l.is_party = ${isParty === 'true'}` : sql``}
+    ORDER BY l.name ASC
+    LIMIT ${limit} OFFSET ${offset}
+  `;
 
-  const [ledgers, total] = await Promise.all([
-    prisma.ledger.findMany({
-      where,
-      include: { group: true },
-      orderBy: { name: "asc" },
-      skip: (page - 1) * limit,
-      take: limit,
-    }),
-    prisma.ledger.count({ where }),
-  ]);
+  const countRows = await sql`
+    SELECT COUNT(*) FROM ledgers l
+    WHERE l.company_id = ${companyId} AND l.is_active = true
+      ${search ? sql`AND l.name ILIKE ${'%' + search + '%'}` : sql``}
+      ${groupId ? sql`AND l.group_id = ${groupId}` : sql``}
+      ${isParty !== null ? sql`AND l.is_party = ${isParty === 'true'}` : sql``}
+  `;
 
-  return NextResponse.json({ ledgers, total });
+  const withGroup = ledgers.map((l) => ({
+    ...l,
+    group: { id: l.group_id, name: l.group_name, nature: l.group_nature },
+  }));
+
+  return NextResponse.json({ ledgers: withGroup, total: Number((countRows[0] as { count: string }).count) });
 }
 
 export async function POST(req: NextRequest) {
   const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const body = await req.json() as Record<string, unknown>;
   const parsed = ledgerSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
 
-  const ledger = await prisma.ledger.create({
-    data: parsed.data,
-    include: { group: true },
-  });
+  const d = parsed.data;
 
-  // Audit log
-  await prisma.auditLog.create({
-    data: {
-      userId: session.user.id,
-      companyId: parsed.data.companyId,
-      action: "CREATE",
-      entity: "Ledger",
-      entityId: ledger.id,
-      newData: parsed.data,
-    },
-  });
+  const rows = await sql`
+    INSERT INTO ledgers (id, company_id, group_id, name, alias, opening_balance, opening_balance_type,
+      gstin, pan, mobile_no, email, address, city, state, state_code, pincode,
+      credit_limit, credit_days, is_party, party_type, gst_type, tds_applicable, tds_section_id,
+      bank_name, bank_account, bank_ifsc)
+    VALUES (gen_random_uuid()::text, ${d.companyId}, ${d.groupId}, ${d.name}, ${d.alias ?? null},
+      ${d.openingBalance}, ${d.openingBalanceType}, ${d.gstin ?? null}, ${d.pan ?? null},
+      ${d.mobileNo ?? null}, ${d.email ?? null}, ${d.address ?? null}, ${d.city ?? null},
+      ${d.state ?? null}, ${d.stateCode ?? null}, ${d.pincode ?? null},
+      ${d.creditLimit ?? null}, ${d.creditDays ?? null}, ${d.isParty}, ${d.partyType ?? null},
+      ${d.gstType ?? null}, ${d.tdsApplicable}, ${d.tdsSectionId ?? null},
+      ${d.bankName ?? null}, ${d.bankAccount ?? null}, ${d.bankIfsc ?? null})
+    RETURNING *
+  `;
+  const ledger = rows[0];
 
-  return NextResponse.json({ ledger }, { status: 201 });
+  const grpRows = await sql`SELECT id, name, nature FROM ledger_groups WHERE id = ${d.groupId} LIMIT 1`;
+  const group = grpRows[0];
+
+  await sql`
+    INSERT INTO audit_logs (id, user_id, company_id, action, entity, entity_id, new_data)
+    VALUES (gen_random_uuid()::text, ${session.user.id}, ${d.companyId}, 'CREATE', 'Ledger', ${(ledger as { id: string }).id}, ${JSON.stringify(d)})
+  `;
+
+  return NextResponse.json({ ledger: { ...ledger, group } }, { status: 201 });
 }

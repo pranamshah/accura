@@ -1,52 +1,53 @@
-import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
-import prisma from "@/lib/db/prisma";
-import { z } from "zod";
+import { NextRequest, NextResponse } from 'next/server';
+import { auth } from '@/lib/auth';
+import sql from '@/lib/db';
+import { z } from 'zod';
 
 const groupSchema = z.object({
   companyId: z.string(),
   name: z.string().min(1),
   alias: z.string().optional(),
   parentId: z.string().optional(),
-  nature: z.enum(["ASSETS", "LIABILITIES", "INCOME", "EXPENSES"]),
+  nature: z.enum(['ASSETS', 'LIABILITIES', 'INCOME', 'EXPENSES']),
 });
 
 export async function GET(req: NextRequest) {
   const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const { searchParams } = new URL(req.url);
-  const companyId = searchParams.get("companyId");
-  if (!companyId) return NextResponse.json({ error: "companyId required" }, { status: 400 });
+  const companyId = searchParams.get('companyId');
+  if (!companyId) return NextResponse.json({ error: 'companyId required' }, { status: 400 });
 
-  const groups = await prisma.ledgerGroup.findMany({
-    where: { companyId },
-    include: {
-      children: {
-        include: {
-          children: true,
-          ledgers: { select: { id: true, name: true } },
-        },
-      },
-      ledgers: { select: { id: true, name: true } },
-    },
-    orderBy: { name: "asc" },
-  });
+  const groups = await sql`
+    SELECT lg.*, 
+      json_agg(DISTINCT jsonb_build_object('id', l.id, 'name', l.name)) FILTER (WHERE l.id IS NOT NULL) as ledgers
+    FROM ledger_groups lg
+    LEFT JOIN ledgers l ON l.group_id = lg.id AND l.is_active = true
+    WHERE lg.company_id = ${companyId}
+    GROUP BY lg.id
+    ORDER BY lg.name ASC
+  `;
 
-  // Return flat and tree versions
-  const rootGroups = groups.filter((g) => !g.parentId);
+  const rootGroups = groups.filter((g) => !(g as { parent_id: string | null }).parent_id);
 
   return NextResponse.json({ groups, rootGroups });
 }
 
 export async function POST(req: NextRequest) {
   const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const body = await req.json() as Record<string, unknown>;
   const parsed = groupSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
 
-  const group = await prisma.ledgerGroup.create({ data: parsed.data });
-  return NextResponse.json({ group }, { status: 201 });
+  const d = parsed.data;
+  const rows = await sql`
+    INSERT INTO ledger_groups (id, company_id, name, alias, parent_id, nature)
+    VALUES (gen_random_uuid()::text, ${d.companyId}, ${d.name}, ${d.alias ?? null}, ${d.parentId ?? null}, ${d.nature})
+    RETURNING *
+  `;
+
+  return NextResponse.json({ group: rows[0] }, { status: 201 });
 }

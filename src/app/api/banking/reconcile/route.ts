@@ -1,55 +1,48 @@
-import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
-import prisma from "@/lib/db/prisma";
+import { NextRequest, NextResponse } from 'next/server';
+import { auth } from '@/lib/auth';
+import sql from '@/lib/db';
 
 export async function POST(req: NextRequest) {
   const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const body = await req.json() as {
     bankAccountId: string;
-    transactions: Array<{
-      date: string;
-      description: string;
-      amount: number;
-      type: "DEBIT" | "CREDIT";
-    }>;
+    transactions: Array<{ date: string; description: string; amount: number; type: 'DEBIT' | 'CREDIT' }>;
   };
   const { bankAccountId, transactions } = body;
 
   if (!bankAccountId || !transactions) {
-    return NextResponse.json({ error: "bankAccountId and transactions required" }, { status: 400 });
+    return NextResponse.json({ error: 'bankAccountId and transactions required' }, { status: 400 });
   }
 
-  const created = await prisma.bankReconciliation.createMany({
-    data: transactions.map((t) => ({
-      bankAccountId,
-      date: new Date(t.date),
-      description: t.description,
-      amount: t.amount,
-      type: t.type,
-      isReconciled: false,
-    })),
-  });
+  let count = 0;
+  for (const t of transactions) {
+    await sql`
+      INSERT INTO bank_reconciliations (id, bank_account_id, date, description, amount, type, is_reconciled)
+      VALUES (gen_random_uuid()::text, ${bankAccountId}, ${t.date}, ${t.description}, ${t.amount}, ${t.type}, false)
+    `;
+    count++;
+  }
 
-  return NextResponse.json({ created: created.count });
+  return NextResponse.json({ created: count });
 }
 
 export async function PUT(req: NextRequest) {
   const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const body = await req.json() as { id: string; isReconciled: boolean; voucherId?: string };
   const { id, isReconciled, voucherId } = body;
 
-  const entry = await prisma.bankReconciliation.update({
-    where: { id },
-    data: {
-      isReconciled,
-      reconciledDate: isReconciled ? new Date() : null,
-      voucherId,
-    },
-  });
+  const rows = await sql`
+    UPDATE bank_reconciliations SET
+      is_reconciled = ${isReconciled},
+      reconciled_date = ${isReconciled ? new Date().toISOString() : null},
+      voucher_id = ${voucherId ?? null}
+    WHERE id = ${id}
+    RETURNING *
+  `;
 
-  return NextResponse.json({ entry });
+  return NextResponse.json({ entry: rows[0] });
 }

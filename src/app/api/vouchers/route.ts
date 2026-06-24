@@ -1,13 +1,12 @@
-import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
-import prisma from "@/lib/db/prisma";
-import { z } from "zod";
-import { generateVoucherNumber } from "@/lib/utils";
-import { getFinancialYear } from "@/lib/utils";
+import { NextRequest, NextResponse } from 'next/server';
+import { auth } from '@/lib/auth';
+import sql from '@/lib/db';
+import { z } from 'zod';
+import { generateVoucherNumber, getFinancialYear } from '@/lib/utils';
 
 const entrySchema = z.object({
   ledgerId: z.string(),
-  type: z.enum(["DEBIT", "CREDIT"]),
+  type: z.enum(['DEBIT', 'CREDIT']),
   amount: z.number(),
   narration: z.string().optional(),
   billRef: z.string().optional(),
@@ -45,14 +44,14 @@ const inventoryLineSchema = z.object({
 const voucherSchema = z.object({
   companyId: z.string(),
   type: z.enum([
-    "SALES", "PURCHASE", "PAYMENT", "RECEIPT", "JOURNAL", "CONTRA",
-    "DEBIT_NOTE", "CREDIT_NOTE", "SALES_ORDER", "PURCHASE_ORDER",
-    "DELIVERY_NOTE", "GOODS_RECEIPT", "OPENING_BALANCE", "PAYROLL",
+    'SALES', 'PURCHASE', 'PAYMENT', 'RECEIPT', 'JOURNAL', 'CONTRA',
+    'DEBIT_NOTE', 'CREDIT_NOTE', 'SALES_ORDER', 'PURCHASE_ORDER',
+    'DELIVERY_NOTE', 'GOODS_RECEIPT', 'OPENING_BALANCE', 'PAYROLL',
   ]),
   date: z.string(),
   narration: z.string().optional(),
   reference: z.string().optional(),
-  status: z.enum(["ACTIVE", "CANCELLED", "DRAFT"]).default("ACTIVE"),
+  status: z.enum(['ACTIVE', 'CANCELLED', 'DRAFT']).default('ACTIVE'),
   gstApplicable: z.boolean().default(false),
   placeOfSupply: z.string().optional(),
   reverseCharge: z.boolean().default(false),
@@ -65,54 +64,80 @@ const voucherSchema = z.object({
 
 export async function GET(req: NextRequest) {
   const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const { searchParams } = new URL(req.url);
-  const companyId = searchParams.get("companyId");
-  const type = searchParams.get("type");
-  const from = searchParams.get("from");
-  const to = searchParams.get("to");
-  const status = searchParams.get("status");
-  const page = parseInt(searchParams.get("page") || "1");
-  const limit = parseInt(searchParams.get("limit") || "50");
-  const search = searchParams.get("search") || "";
+  const companyId = searchParams.get('companyId');
+  const type = searchParams.get('type');
+  const from = searchParams.get('from');
+  const to = searchParams.get('to');
+  const status = searchParams.get('status');
+  const page = parseInt(searchParams.get('page') || '1');
+  const limit = parseInt(searchParams.get('limit') || '50');
+  const search = searchParams.get('search') || '';
+  const offset = (page - 1) * limit;
 
-  if (!companyId) return NextResponse.json({ error: "companyId required" }, { status: 400 });
+  if (!companyId) return NextResponse.json({ error: 'companyId required' }, { status: 400 });
 
-  const where = {
-    companyId,
-    ...(type ? { type: type as "SALES" } : {}),
-    ...(status ? { status: status as "ACTIVE" } : {}),
-    ...(from || to ? {
-      date: {
-        ...(from ? { gte: new Date(from) } : {}),
-        ...(to ? { lte: new Date(to) } : {}),
-      },
-    } : {}),
-    ...(search ? { narration: { contains: search, mode: "insensitive" as const } } : {}),
-  };
+  const vouchers = await sql`
+    SELECT v.*
+    FROM vouchers v
+    WHERE v.company_id = ${companyId}
+      ${type ? sql`AND v.type = ${type}` : sql``}
+      ${status ? sql`AND v.status = ${status}` : sql``}
+      ${from ? sql`AND v.date >= ${from}` : sql``}
+      ${to ? sql`AND v.date <= ${to}` : sql``}
+      ${search ? sql`AND v.narration ILIKE ${'%' + search + '%'}` : sql``}
+    ORDER BY v.date DESC
+    LIMIT ${limit} OFFSET ${offset}
+  `;
 
-  const [vouchers, total] = await Promise.all([
-    prisma.voucher.findMany({
-      where,
-      include: {
-        entries: { include: { ledger: true } },
-        gstLines: true,
-        inventoryLines: { include: { item: { include: { unit: true } } } },
-      },
-      orderBy: { date: "desc" },
-      skip: (page - 1) * limit,
-      take: limit,
-    }),
-    prisma.voucher.count({ where }),
-  ]);
+  const countRows = await sql`
+    SELECT COUNT(*) FROM vouchers v
+    WHERE v.company_id = ${companyId}
+      ${type ? sql`AND v.type = ${type}` : sql``}
+      ${status ? sql`AND v.status = ${status}` : sql``}
+      ${from ? sql`AND v.date >= ${from}` : sql``}
+      ${to ? sql`AND v.date <= ${to}` : sql``}
+      ${search ? sql`AND v.narration ILIKE ${'%' + search + '%'}` : sql``}
+  `;
 
-  return NextResponse.json({ vouchers, total });
+  // Fetch entries and gst_lines for each voucher
+  const voucherIds = (vouchers as { id: string }[]).map((v) => v.id);
+  let entries: unknown[] = [];
+  let gstLines: unknown[] = [];
+  let inventoryLines: unknown[] = [];
+
+  if (voucherIds.length > 0) {
+    entries = await sql`
+      SELECT ve.*, l.name as ledger_name, l.gstin as ledger_gstin, l.group_id
+      FROM voucher_entries ve
+      JOIN ledgers l ON ve.ledger_id = l.id
+      WHERE ve.voucher_id = ANY(${voucherIds})
+    `;
+    gstLines = await sql`SELECT * FROM gst_lines WHERE voucher_id = ANY(${voucherIds})`;
+    inventoryLines = await sql`
+      SELECT il.*, i.name as item_name, u.symbol as unit_symbol
+      FROM inventory_lines il
+      JOIN items i ON il.item_id = i.id
+      LEFT JOIN units u ON i.unit_id = u.id
+      WHERE il.voucher_id = ANY(${voucherIds})
+    `;
+  }
+
+  const vouchersWithDetails = (vouchers as { id: string }[]).map((v) => ({
+    ...v,
+    entries: (entries as { voucher_id: string }[]).filter((e) => e.voucher_id === v.id).map((e) => ({ ...e, ledger: { id: (e as { ledger_id: string }).ledger_id, name: (e as { ledger_name: string }).ledger_name, gstin: (e as { ledger_gstin: string }).ledger_gstin } })),
+    gstLines: (gstLines as { voucher_id: string }[]).filter((g) => g.voucher_id === v.id),
+    inventoryLines: (inventoryLines as { voucher_id: string }[]).filter((il) => il.voucher_id === v.id).map((il) => ({ ...il, item: { id: (il as { item_id: string }).item_id, name: (il as { item_name: string }).item_name, unit: { symbol: (il as { unit_symbol: string }).unit_symbol } } })),
+  }));
+
+  return NextResponse.json({ vouchers: vouchersWithDetails, total: Number((countRows[0] as { count: string }).count) });
 }
 
 export async function POST(req: NextRequest) {
   const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const body = await req.json() as Record<string, unknown>;
   const parsed = voucherSchema.safeParse(body);
@@ -120,70 +145,67 @@ export async function POST(req: NextRequest) {
 
   const data = parsed.data;
 
-  // Validate Dr = Cr
-  const totalDr = data.entries.filter((e) => e.type === "DEBIT").reduce((s, e) => s + e.amount, 0);
-  const totalCr = data.entries.filter((e) => e.type === "CREDIT").reduce((s, e) => s + e.amount, 0);
+  const totalDr = data.entries.filter((e) => e.type === 'DEBIT').reduce((s, e) => s + e.amount, 0);
+  const totalCr = data.entries.filter((e) => e.type === 'CREDIT').reduce((s, e) => s + e.amount, 0);
   if (Math.abs(totalDr - totalCr) > 0.01) {
-    return NextResponse.json({ error: "Debit and Credit must be equal" }, { status: 400 });
+    return NextResponse.json({ error: 'Debit and Credit must be equal' }, { status: 400 });
   }
 
-  // Generate voucher number
-  const count = await prisma.voucher.count({
-    where: { companyId: data.companyId, type: data.type },
-  });
-
+  const countRows = await sql`SELECT COUNT(*) FROM vouchers WHERE company_id = ${data.companyId} AND type = ${data.type}`;
+  const count = Number((countRows[0] as { count: string }).count);
   const fy = getFinancialYear(new Date(data.date));
   const number = generateVoucherNumber(data.type, count + 1, fy.label);
 
-  const voucher = await prisma.voucher.create({
-    data: {
-      companyId: data.companyId,
-      type: data.type,
-      number,
-      date: new Date(data.date),
-      narration: data.narration,
-      reference: data.reference,
-      totalAmount: totalDr,
-      status: data.status,
-      gstApplicable: data.gstApplicable,
-      placeOfSupply: data.placeOfSupply,
-      reverseCharge: data.reverseCharge,
-      costCentreId: data.costCentreId,
-      aiGenerated: data.aiGenerated,
-      entries: {
-        create: data.entries.map((e) => ({
-          ledgerId: e.ledgerId,
-          type: e.type,
-          amount: e.amount,
-          narration: e.narration,
-          billRef: e.billRef,
-          billDate: e.billDate ? new Date(e.billDate) : undefined,
-        })),
-      },
-      ...(data.gstLines?.length
-        ? { gstLines: { create: data.gstLines } }
-        : {}),
-      ...(data.inventoryLines?.length
-        ? { inventoryLines: { create: data.inventoryLines } }
-        : {}),
-    },
-    include: {
-      entries: { include: { ledger: true } },
-      gstLines: true,
-      inventoryLines: { include: { item: true } },
-    },
+  const voucher = await sql.transaction(async (txn) => {
+    const vRows = await txn`
+      INSERT INTO vouchers (id, company_id, type, number, date, narration, reference, total_amount, status,
+        gst_applicable, place_of_supply, reverse_charge, cost_centre_id, ai_generated)
+      VALUES (gen_random_uuid()::text, ${data.companyId}, ${data.type}, ${number}, ${data.date},
+        ${data.narration ?? null}, ${data.reference ?? null}, ${totalDr}, ${data.status},
+        ${data.gstApplicable}, ${data.placeOfSupply ?? null}, ${data.reverseCharge},
+        ${data.costCentreId ?? null}, ${data.aiGenerated})
+      RETURNING *
+    `;
+    const v = vRows[0] as { id: string };
+
+    for (const e of data.entries) {
+      await txn`
+        INSERT INTO voucher_entries (id, voucher_id, ledger_id, type, amount, narration, bill_ref, bill_date)
+        VALUES (gen_random_uuid()::text, ${v.id}, ${e.ledgerId}, ${e.type}, ${e.amount},
+          ${e.narration ?? null}, ${e.billRef ?? null}, ${e.billDate ?? null})
+      `;
+    }
+
+    if (data.gstLines?.length) {
+      for (const g of data.gstLines) {
+        await txn`
+          INSERT INTO gst_lines (id, voucher_id, hsn_code, description, quantity, rate, taxable_value,
+            igst_rate, cgst_rate, sgst_rate, cess_rate, igst_amount, cgst_amount, sgst_amount, cess_amount, total_tax)
+          VALUES (gen_random_uuid()::text, ${v.id}, ${g.hsnCode ?? null}, ${g.description ?? null},
+            ${g.quantity ?? null}, ${g.rate ?? null}, ${g.taxableValue},
+            ${g.igstRate}, ${g.cgstRate}, ${g.sgstRate}, ${g.cessRate},
+            ${g.igstAmount}, ${g.cgstAmount}, ${g.sgstAmount}, ${g.cessAmount}, ${g.totalTax})
+        `;
+      }
+    }
+
+    if (data.inventoryLines?.length) {
+      for (const il of data.inventoryLines) {
+        await txn`
+          INSERT INTO inventory_lines (id, voucher_id, item_id, godown_id, batch_no, serial_no, quantity, rate, amount, discount)
+          VALUES (gen_random_uuid()::text, ${v.id}, ${il.itemId}, ${il.godownId ?? null},
+            ${il.batchNo ?? null}, ${il.serialNo ?? null}, ${il.quantity}, ${il.rate}, ${il.amount}, ${il.discount})
+        `;
+      }
+    }
+
+    return v;
   });
 
-  await prisma.auditLog.create({
-    data: {
-      userId: session.user.id,
-      companyId: data.companyId,
-      action: "CREATE",
-      entity: "Voucher",
-      entityId: voucher.id,
-      newData: { type: data.type, number, amount: totalDr },
-    },
-  });
+  await sql`
+    INSERT INTO audit_logs (id, user_id, company_id, action, entity, entity_id, new_data)
+    VALUES (gen_random_uuid()::text, ${session.user.id}, ${data.companyId}, 'CREATE', 'Voucher', ${(voucher as { id: string }).id}, ${JSON.stringify({ type: data.type, number, amount: totalDr })})
+  `;
 
   return NextResponse.json({ voucher }, { status: 201 });
 }

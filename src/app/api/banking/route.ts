@@ -1,7 +1,7 @@
-import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
-import prisma from "@/lib/db/prisma";
-import { z } from "zod";
+import { NextRequest, NextResponse } from 'next/server';
+import { auth } from '@/lib/auth';
+import sql from '@/lib/db';
+import { z } from 'zod';
 
 const bankAccountSchema = z.object({
   companyId: z.string(),
@@ -15,29 +15,40 @@ const bankAccountSchema = z.object({
 
 export async function GET(req: NextRequest) {
   const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const { searchParams } = new URL(req.url);
-  const companyId = searchParams.get("companyId");
-  if (!companyId) return NextResponse.json({ error: "companyId required" }, { status: 400 });
+  const companyId = searchParams.get('companyId');
+  if (!companyId) return NextResponse.json({ error: 'companyId required' }, { status: 400 });
 
-  const accounts = await prisma.bankAccount.findMany({
-    where: { companyId },
-    include: { reconciliations: { where: { isReconciled: false } } },
-    orderBy: { createdAt: "desc" },
-  });
+  const accounts = await sql`
+    SELECT ba.*,
+      json_agg(br.*) FILTER (WHERE br.id IS NOT NULL AND br.is_reconciled = false) as reconciliations
+    FROM bank_accounts ba
+    LEFT JOIN bank_reconciliations br ON br.bank_account_id = ba.id AND br.is_reconciled = false
+    WHERE ba.company_id = ${companyId}
+    GROUP BY ba.id
+    ORDER BY ba.created_at DESC
+  `;
 
   return NextResponse.json({ accounts });
 }
 
 export async function POST(req: NextRequest) {
   const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const body = await req.json() as Record<string, unknown>;
   const parsed = bankAccountSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
 
-  const account = await prisma.bankAccount.create({ data: parsed.data });
-  return NextResponse.json({ account }, { status: 201 });
+  const d = parsed.data;
+  const rows = await sql`
+    INSERT INTO bank_accounts (id, company_id, name, account_no, bank_name, ifsc, branch, opening_balance)
+    VALUES (gen_random_uuid()::text, ${d.companyId}, ${d.name}, ${d.accountNo}, ${d.bankName},
+      ${d.ifsc ?? null}, ${d.branch ?? null}, ${d.openingBalance})
+    RETURNING *
+  `;
+
+  return NextResponse.json({ account: rows[0] }, { status: 201 });
 }

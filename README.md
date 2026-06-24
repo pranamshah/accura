@@ -11,7 +11,7 @@
 - **TDS Module** — sections, challans, Form 16/26Q data
 - **Banking** — bank reconciliation, statement import
 - **Reports** — Trial Balance, P&L, Balance Sheet, Cash Flow, Outstanding, Day Book, Ratio Analysis
-- **AI Assistant** — natural language voucher entry, anomaly detection, report insights (Claude claude-sonnet-4-6)
+- **AI Assistant** — natural language voucher entry, anomaly detection, report insights (Grok by xAI)
 - **CA Portal** — shareable read-only link for chartered accountants
 - **Audit Trail** — every change tracked with old/new values
 
@@ -22,8 +22,8 @@
 | Framework | Next.js 15 (App Router) |
 | Language | TypeScript (strict) |
 | Database | **Neon PostgreSQL** (free tier) |
-| ORM | Prisma |
-| Auth | NextAuth v5 |
+| DB Driver | **@neondatabase/serverless** (raw SQL) |
+| Auth | NextAuth v5 (JWT) |
 | UI | shadcn/ui + Tailwind CSS |
 | State | Zustand |
 | Forms | React Hook Form + Zod |
@@ -31,7 +31,7 @@
 | Charts | Recharts |
 | PDF | jsPDF + autoTable |
 | Excel | ExcelJS |
-| AI | Anthropic SDK (claude-sonnet-4-6) |
+| AI | Grok (xAI) via openai SDK |
 | Hosting | Vercel (free tier) |
 
 ## Quick Start
@@ -43,22 +43,22 @@ cd accura
 npm install
 ```
 
-### 2. Set up Neon Database (free)
+### 2. Database Setup (Neon — free)
 1. Go to [neon.tech](https://neon.tech) → Create account → New Project
-2. Copy the **Pooled connection** string → set as `DATABASE_URL`
-3. Copy the **Direct connection** string → set as `DIRECT_URL`
+2. Copy the **Pooled connection** string → set as `DATABASE_URL` in `.env.local`
+3. Run: `npm run db:migrate` (creates all tables)
+4. Run: `npm run db:seed` (loads demo data)
 
 ### 3. Configure Environment
 ```bash
 cp .env.example .env.local
-# Edit .env.local with your Neon URLs, NextAuth secret, Anthropic API key
+# Edit .env.local with your Neon URL, NextAuth secret, and optionally XAI_API_KEY
 ```
 
-### 4. Run Migrations & Seed
-```bash
-npx prisma db push
-npx prisma db seed
-```
+### 4. AI Setup (Grok by xAI — free credits available)
+1. Go to [console.x.ai](https://console.x.ai) → get API key
+2. Set `XAI_API_KEY` in `.env.local`
+3. AI features work immediately — gracefully degrades if key not set
 
 ### 5. Start Dev Server
 ```bash
@@ -72,16 +72,15 @@ Open [http://localhost:3000](http://localhost:3000)
 ## Environment Variables
 
 ```env
-# Neon PostgreSQL
-DATABASE_URL="postgresql://user:pass@ep-xxx.neon.tech/neondb?sslmode=require&pgbouncer=true"
-DIRECT_URL="postgresql://user:pass@ep-xxx.neon.tech/neondb?sslmode=require"
+# Neon PostgreSQL (pooled)
+DATABASE_URL="postgresql://user:pass@ep-xxx.neon.tech/neondb?sslmode=require&pgbouncer=true&connect_timeout=15"
 
 # NextAuth
 NEXTAUTH_URL="http://localhost:3000"
 NEXTAUTH_SECRET="generate-with-openssl-rand-base64-32"
 
-# AI (optional - gracefully degrades)
-ANTHROPIC_API_KEY="sk-ant-..."
+# Grok AI by xAI (optional — gracefully degrades if not set)
+XAI_API_KEY="xai-..."
 ```
 
 ## Modules

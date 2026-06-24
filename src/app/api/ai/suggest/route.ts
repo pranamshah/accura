@@ -1,18 +1,22 @@
-import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
-import prisma from "@/lib/db/prisma";
-import { suggestJournalEntry } from "@/lib/ai";
+import { NextRequest, NextResponse } from 'next/server';
+import { auth } from '@/lib/auth';
+import sql from '@/lib/db';
+import { suggestJournalEntry } from '@/lib/ai';
 
 export async function POST(req: NextRequest) {
   const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const body = await req.json() as { prompt: string; companyId: string };
   const { prompt, companyId } = body;
 
-  if (!prompt) return NextResponse.json({ error: "prompt required" }, { status: 400 });
+  if (!prompt) return NextResponse.json({ error: 'prompt required' }, { status: 400 });
 
-  const company = companyId ? await prisma.company.findUnique({ where: { id: companyId } }) : null;
+  let company = null;
+  if (companyId) {
+    const rows = await sql`SELECT * FROM companies WHERE id = ${companyId} LIMIT 1`;
+    company = rows[0] as { name: string; gstin: string | null; state: string | null } | undefined;
+  }
 
   const suggestion = await suggestJournalEntry(prompt, company ? {
     name: company.name,
@@ -20,17 +24,11 @@ export async function POST(req: NextRequest) {
     state: company.state || undefined,
   } : undefined);
 
-  // Save AI entry
   if (companyId) {
-    await prisma.aIEntry.create({
-      data: {
-        companyId,
-        userId: session.user.id,
-        prompt,
-        response: JSON.stringify(suggestion),
-        type: "ENTRY_SUGGESTION",
-      },
-    });
+    await sql`
+      INSERT INTO ai_entries (id, company_id, user_id, prompt, response, type)
+      VALUES (gen_random_uuid()::text, ${companyId}, ${session.user.id}, ${prompt}, ${JSON.stringify(suggestion)}, 'ENTRY_SUGGESTION')
+    `;
   }
 
   return NextResponse.json({ suggestion });

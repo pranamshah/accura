@@ -1,95 +1,78 @@
-import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
-import prisma from "@/lib/db/prisma";
+import { NextRequest, NextResponse } from 'next/server';
+import { auth } from '@/lib/auth';
+import sql from '@/lib/db';
 
 export async function GET(req: NextRequest) {
   const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const { searchParams } = new URL(req.url);
-  const companyId = searchParams.get("companyId");
-  const month = searchParams.get("month");
-  const year = searchParams.get("year");
+  const companyId = searchParams.get('companyId');
+  const month = searchParams.get('month');
+  const year = searchParams.get('year');
 
   if (!companyId || !month || !year) {
-    return NextResponse.json({ error: "companyId, month, year required" }, { status: 400 });
+    return NextResponse.json({ error: 'companyId, month, year required' }, { status: 400 });
   }
 
-  const startDate = new Date(parseInt(year), parseInt(month) - 1, 1);
-  const endDate = new Date(parseInt(year), parseInt(month), 0, 23, 59, 59);
+  const startDate = new Date(parseInt(year), parseInt(month) - 1, 1).toISOString();
+  const endDate = new Date(parseInt(year), parseInt(month), 0, 23, 59, 59).toISOString();
 
-  // Get purchase vouchers
-  const purchases = await prisma.voucher.findMany({
-    where: {
-      companyId,
-      type: "PURCHASE",
-      status: "ACTIVE",
-      date: { gte: startDate, lte: endDate },
-    },
-    include: {
-      entries: { include: { ledger: true } },
-      gstLines: true,
-    },
-  });
+  const vouchers = await sql`
+    SELECT v.* FROM vouchers v
+    WHERE v.company_id = ${companyId} AND v.type = 'PURCHASE' AND v.status = 'ACTIVE'
+      AND v.date >= ${startDate} AND v.date <= ${endDate}
+  `;
+
+  const vIds = (vouchers as { id: string }[]).map((v) => v.id);
+  let entries: unknown[] = [];
+  let gstLines: unknown[] = [];
+  if (vIds.length > 0) {
+    entries = await sql`SELECT ve.*, l.name as ledger_name, l.gstin as ledger_gstin FROM voucher_entries ve JOIN ledgers l ON ve.ledger_id = l.id WHERE ve.voucher_id = ANY(${vIds})`;
+    gstLines = await sql`SELECT * FROM gst_lines WHERE voucher_id = ANY(${vIds})`;
+  }
 
   return NextResponse.json({
-    purchases: purchases.map((v) => ({
+    purchases: (vouchers as { id: string; number: string; date: string; total_amount: number }[]).map((v) => ({
       voucherId: v.id,
       number: v.number,
       date: v.date,
-      supplierName: v.entries?.find((e) => e.type === "CREDIT")?.ledger?.name || "",
-      supplierGstin: v.entries?.find((e) => e.type === "CREDIT")?.ledger?.gstin || "",
-      taxableValue: v.gstLines?.reduce((s, l) => s + l.taxableValue, 0) || 0,
-      igst: v.gstLines?.reduce((s, l) => s + l.igstAmount, 0) || 0,
-      cgst: v.gstLines?.reduce((s, l) => s + l.cgstAmount, 0) || 0,
-      sgst: v.gstLines?.reduce((s, l) => s + l.sgstAmount, 0) || 0,
-      totalValue: v.totalAmount,
-      matched: false, // Compare with uploaded GSTR-2B
+      supplierName: (entries as { voucher_id: string; type: string; ledger_name: string }[]).find((e) => e.voucher_id === v.id && e.type === 'CREDIT')?.ledger_name || '',
+      supplierGstin: (entries as { voucher_id: string; type: string; ledger_gstin: string }[]).find((e) => e.voucher_id === v.id && e.type === 'CREDIT')?.ledger_gstin || '',
+      taxableValue: (gstLines as { voucher_id: string; taxable_value: number }[]).filter((g) => g.voucher_id === v.id).reduce((s, l) => s + l.taxable_value, 0),
+      igst: (gstLines as { voucher_id: string; igst_amount: number }[]).filter((g) => g.voucher_id === v.id).reduce((s, l) => s + l.igst_amount, 0),
+      cgst: (gstLines as { voucher_id: string; cgst_amount: number }[]).filter((g) => g.voucher_id === v.id).reduce((s, l) => s + l.cgst_amount, 0),
+      sgst: (gstLines as { voucher_id: string; sgst_amount: number }[]).filter((g) => g.voucher_id === v.id).reduce((s, l) => s + l.sgst_amount, 0),
+      totalValue: v.total_amount,
+      matched: false,
     })),
   });
 }
 
 export async function POST(req: NextRequest) {
   const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  // Handle GSTR-2B JSON upload and match with purchases
   const body = await req.json() as { companyId: string; jsonData: Record<string, unknown>; month: string; year: string };
   const { companyId, jsonData, month, year } = body;
 
   if (!companyId || !jsonData) {
-    return NextResponse.json({ error: "companyId and jsonData required" }, { status: 400 });
+    return NextResponse.json({ error: 'companyId and jsonData required' }, { status: 400 });
   }
 
-  // Store the GSTR-2B data
-  await prisma.gSTReturn.upsert({
-    where: {
-      id: `${companyId}-GSTR2B-${month}-${year}`,
-    },
-    create: {
-      companyId,
-      type: "GSTR2B",
-      period: month,
-      year: parseInt(year),
-      status: "FILED",
-      jsonData,
-    },
-    update: {
-      jsonData,
-      status: "FILED",
-    },
-  }).catch(async () => {
-    await prisma.gSTReturn.create({
-      data: {
-        companyId,
-        type: "GSTR2B",
-        period: month,
-        year: parseInt(year),
-        status: "FILED",
-        jsonData,
-      },
-    });
-  });
+  // Try update first, then insert
+  const existing = await sql`
+    SELECT id FROM gst_returns WHERE company_id = ${companyId} AND type = 'GSTR2B' AND period = ${month} AND year = ${parseInt(year)} LIMIT 1
+  `;
 
-  return NextResponse.json({ success: true, message: "GSTR-2B uploaded successfully" });
+  if (existing.length > 0) {
+    await sql`UPDATE gst_returns SET json_data = ${JSON.stringify(jsonData)}, status = 'FILED' WHERE id = ${(existing[0] as { id: string }).id}`;
+  } else {
+    await sql`
+      INSERT INTO gst_returns (id, company_id, type, period, year, status, json_data)
+      VALUES (gen_random_uuid()::text, ${companyId}, 'GSTR2B', ${month}, ${parseInt(year)}, 'FILED', ${JSON.stringify(jsonData)})
+    `;
+  }
+
+  return NextResponse.json({ success: true, message: 'GSTR-2B uploaded successfully' });
 }

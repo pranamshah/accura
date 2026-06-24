@@ -1,131 +1,113 @@
-import type { AISuggestion, Voucher, VoucherType } from "@/types";
+import OpenAI from 'openai';
+import type { AISuggestion, VoucherType } from '@/types';
 
-// Initialize Anthropic client lazily
-function getAnthropicClient() {
-  if (!process.env.ANTHROPIC_API_KEY) return null;
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const Anthropic = require("@anthropic-ai/sdk");
-  return new Anthropic.default({ apiKey: process.env.ANTHROPIC_API_KEY });
-}
+const client = new OpenAI({
+  apiKey: process.env.XAI_API_KEY ?? '',
+  baseURL: 'https://api.x.ai/v1',
+});
 
-const SYSTEM_PROMPT = `You are an expert Indian Chartered Accountant assistant for the Accura accounting software.
+const GROK_MODEL = 'grok-3-mini';
+
+const SYSTEM_PROMPT = `You are an expert Indian Chartered Accountant assistant for Accura accounting software.
 Always respond with valid JSON when asked for structured data.
 Use proper Indian accounting standards (Ind AS / AS).
-Be concise and accurate. Use double-entry bookkeeping principles.
-For GST: apply IGST for inter-state, CGST+SGST for intra-state transactions.
-Common ledger groups: Capital Account, Sundry Debtors, Sundry Creditors, Sales Accounts, Purchase Accounts, Bank Accounts, Cash-in-Hand, Duties & Taxes.`;
+Use Indian terminology: ledger, voucher, narration, Dr/Cr, GST, TDS.
+Be concise and precise.`;
 
-// Suggest journal entry from natural language
 export async function suggestJournalEntry(
-  prompt: string,
-  companyContext?: { name: string; gstin?: string; state?: string }
+  description: string,
+  context?: { name: string; gstin?: string; state?: string }
 ): Promise<AISuggestion> {
-  const client = getAnthropicClient();
-
-  if (!client) {
-    // Mock response when no API key
+  if (!process.env.XAI_API_KEY) {
     return {
-      type: "VOUCHER",
-      voucherType: "JOURNAL" as VoucherType,
-      date: new Date().toISOString().split("T")[0],
-      narration: prompt,
+      type: 'VOUCHER',
+      voucherType: 'PAYMENT' as VoucherType,
+      date: new Date().toISOString().split('T')[0],
+      narration: description,
       entries: [
-        { ledgerName: "Cash", type: "DEBIT", amount: 0 },
-        { ledgerName: "Sales", type: "CREDIT", amount: 0 },
+        { ledgerName: 'Expense A/c', type: 'DEBIT', amount: 0 },
+        { ledgerName: 'Cash', type: 'CREDIT', amount: 0 },
       ],
-      message: "AI service not configured. Please set ANTHROPIC_API_KEY.",
+      message: 'AI service not configured. Please set XAI_API_KEY.',
       confidence: 0,
     };
   }
 
-  const userPrompt = `Based on this transaction description, suggest the correct journal entry:
-"${prompt}"
-${companyContext ? `Company: ${companyContext.name}, State: ${companyContext.state || "Tamil Nadu"}` : ""}
+  const response = await client.chat.completions.create({
+    model: GROK_MODEL,
+    max_tokens: 800,
+    messages: [
+      { role: 'system', content: SYSTEM_PROMPT },
+      {
+        role: 'user',
+        content: `Company: ${context?.name ?? 'Unknown'}
+Transaction description: "${description}"
 
-Respond with JSON in this exact format:
+Return JSON with this exact structure:
 {
   "type": "VOUCHER",
-  "voucherType": "SALES|PURCHASE|PAYMENT|RECEIPT|JOURNAL|CONTRA",
-  "date": "YYYY-MM-DD",
-  "narration": "brief narration",
-  "entries": [
-    {"ledgerName": "ledger name", "type": "DEBIT|CREDIT", "amount": number}
-  ],
+  "voucherType": "PAYMENT|RECEIPT|JOURNAL|SALES|PURCHASE|CONTRA",
+  "date": "${new Date().toISOString().split('T')[0]}",
+  "entries": [{"ledgerName": "ledger name", "type": "DEBIT|CREDIT", "amount": number}],
+  "narration": "professional narration string",
   "message": "explanation",
-  "confidence": 0.0 to 1.0
-}`;
-
-  const response = await client.messages.create({
-    model: "claude-sonnet-4-6",
-    max_tokens: 1024,
-    system: SYSTEM_PROMPT,
-    messages: [{ role: "user", content: userPrompt }],
+  "confidence": 0.0
+}`,
+      },
+    ],
+    response_format: { type: 'json_object' },
   });
 
-  const content = response.content[0];
-  if (content.type !== "text") throw new Error("Unexpected response type");
-
   try {
-    const jsonMatch = content.text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) throw new Error("No JSON in response");
-    return JSON.parse(jsonMatch[0]) as AISuggestion;
+    return JSON.parse(response.choices[0].message.content ?? '{}') as AISuggestion;
   } catch {
     return {
-      type: "VOUCHER",
-      voucherType: "JOURNAL" as VoucherType,
-      date: new Date().toISOString().split("T")[0],
-      narration: prompt,
+      type: 'VOUCHER',
+      voucherType: 'JOURNAL' as VoucherType,
+      date: new Date().toISOString().split('T')[0],
+      narration: description,
       entries: [],
-      message: content.text,
+      message: response.choices[0].message.content ?? '',
       confidence: 0.5,
     };
   }
 }
 
-// Generate narration for a voucher
 export async function generateNarration(
   entries: Array<{ ledgerName: string; type: string; amount: number }>,
   voucherType: string
 ): Promise<string> {
-  const client = getAnthropicClient();
-
-  if (!client) {
-    const amounts = entries.map((e) => `${e.ledgerName}: ₹${e.amount}`).join(", ");
+  if (!process.env.XAI_API_KEY) {
+    const amounts = entries.map((e) => `${e.ledgerName}: ₹${e.amount}`).join(', ');
     return `${voucherType} - ${amounts}`;
   }
 
-  const response = await client.messages.create({
-    model: "claude-sonnet-4-6",
-    max_tokens: 256,
-    system: SYSTEM_PROMPT,
+  const response = await client.chat.completions.create({
+    model: GROK_MODEL,
+    max_tokens: 150,
     messages: [
+      { role: 'system', content: SYSTEM_PROMPT },
       {
-        role: "user",
-        content: `Generate a concise, professional narration for this ${voucherType} voucher entry:
-${entries.map((e) => `${e.type}: ${e.ledgerName} ₹${e.amount}`).join("\n")}
+        role: 'user',
+        content: `Write a professional accounting narration for this ${voucherType} voucher:
+${entries.map((e) => `${e.type}: ${e.ledgerName} ₹${e.amount}`).join('\n')}
 
-Return just the narration text, no JSON needed.`,
+Return only the narration text, no JSON, max 2 sentences.`,
       },
     ],
   });
 
-  const content = response.content[0];
-  return content.type === "text" ? content.text.trim() : "Being settled as per accounts";
+  return response.choices[0].message.content?.trim() ?? 'Being settled as per accounts';
 }
 
-// Detect anomalies in recent vouchers
 export async function detectAnomalies(
-  vouchers: Voucher[]
+  vouchers: Array<{ date: string | Date; type: string; totalAmount: number; number: string }>
 ): Promise<string[]> {
-  const client = getAnthropicClient();
-
-  if (!client) {
-    return [
-      "AI anomaly detection not configured. Set ANTHROPIC_API_KEY to enable.",
-    ];
+  if (!process.env.XAI_API_KEY) {
+    return ['AI anomaly detection not configured. Set XAI_API_KEY to enable.'];
   }
 
-  if (vouchers.length === 0) return ["No vouchers to analyze."];
+  if (vouchers.length === 0) return ['No vouchers to analyze.'];
 
   const summary = vouchers.slice(0, 50).map((v) => ({
     date: v.date,
@@ -134,102 +116,87 @@ export async function detectAnomalies(
     number: v.number,
   }));
 
-  const response = await client.messages.create({
-    model: "claude-sonnet-4-6",
-    max_tokens: 1024,
-    system: SYSTEM_PROMPT,
+  const response = await client.chat.completions.create({
+    model: GROK_MODEL,
+    max_tokens: 1000,
     messages: [
+      { role: 'system', content: SYSTEM_PROMPT },
       {
-        role: "user",
-        content: `Analyze these vouchers for anomalies, unusual patterns, or potential errors:
+        role: 'user',
+        content: `Analyze these vouchers for anomalies:
 ${JSON.stringify(summary, null, 2)}
 
-Return JSON array of anomaly strings (max 5):
-["anomaly 1", "anomaly 2", ...]`,
+Return JSON object with anomalies array (max 5 strings):
+{"anomalies": ["anomaly 1", "anomaly 2"]}`,
       },
     ],
+    response_format: { type: 'json_object' },
   });
 
-  const content = response.content[0];
-  if (content.type !== "text") return [];
-
   try {
-    const jsonMatch = content.text.match(/\[[\s\S]*\]/);
-    if (!jsonMatch) return [content.text];
-    return JSON.parse(jsonMatch[0]) as string[];
+    const result = JSON.parse(response.choices[0].message.content ?? '{"anomalies":[]}') as { anomalies?: string[] };
+    return result.anomalies ?? [];
   } catch {
-    return [content.text];
+    return [];
   }
 }
 
-// Get report insights
 export async function getReportInsights(
   reportData: Record<string, unknown>,
   reportType: string
 ): Promise<string> {
-  const client = getAnthropicClient();
-
-  if (!client) {
-    return "AI insights not configured. Please set ANTHROPIC_API_KEY.";
+  if (!process.env.XAI_API_KEY) {
+    return 'AI insights not configured. Please set XAI_API_KEY.';
   }
 
-  const response = await client.messages.create({
-    model: "claude-sonnet-4-6",
+  const response = await client.chat.completions.create({
+    model: GROK_MODEL,
     max_tokens: 512,
-    system: SYSTEM_PROMPT,
     messages: [
+      { role: 'system', content: SYSTEM_PROMPT },
       {
-        role: "user",
-        content: `Provide 3-4 key insights about this ${reportType} report data for an Indian business:
+        role: 'user',
+        content: `Provide 3-4 key insights about this ${reportType} report for an Indian business:
 ${JSON.stringify(reportData, null, 2)}
 
-Be specific with amounts and percentages. Focus on actionable insights.`,
+Be specific with amounts and percentages. Focus on actionable insights. Return plain text.`,
       },
     ],
   });
 
-  const content = response.content[0];
-  return content.type === "text" ? content.text.trim() : "Unable to generate insights.";
+  return response.choices[0].message.content?.trim() ?? 'Unable to generate insights.';
 }
 
-// Classify a ledger into the right group
 export async function classifyLedger(
   ledgerName: string,
   description?: string
 ): Promise<{ groupName: string; nature: string; confidence: number }> {
-  const client = getAnthropicClient();
-
-  if (!client) {
-    return { groupName: "Indirect Expenses", nature: "EXPENSES", confidence: 0 };
+  if (!process.env.XAI_API_KEY) {
+    return { groupName: 'Indirect Expenses', nature: 'EXPENSES', confidence: 0 };
   }
 
-  const response = await client.messages.create({
-    model: "claude-sonnet-4-6",
-    max_tokens: 256,
-    system: SYSTEM_PROMPT,
+  const response = await client.chat.completions.create({
+    model: GROK_MODEL,
+    max_tokens: 200,
     messages: [
+      { role: 'system', content: SYSTEM_PROMPT },
       {
-        role: "user",
-        content: `Classify this ledger account into the correct ledger group for Indian accounting:
+        role: 'user',
+        content: `Classify this ledger for Indian accounting:
 Name: "${ledgerName}"
-${description ? `Description: "${description}"` : ""}
+${description ? `Description: "${description}"` : ''}
 
-Return JSON:
-{"groupName": "group name from Tally-style chart of accounts", "nature": "ASSETS|LIABILITIES|INCOME|EXPENSES", "confidence": 0.0-1.0}`,
+Available groups: Capital Account, Current Liabilities, Sundry Creditors, Duties & Taxes, Loans (Liability), Fixed Assets, Current Assets, Cash-in-Hand, Bank Accounts, Sundry Debtors, Stock-in-Hand, Sales Accounts, Other Income, Purchase Accounts, Direct Expenses, Indirect Expenses
+
+Return JSON: {"groupName": "group name", "nature": "ASSETS|LIABILITIES|INCOME|EXPENSES", "confidence": 0.0}`,
       },
     ],
+    response_format: { type: 'json_object' },
   });
 
-  const content = response.content[0];
-  if (content.type !== "text") {
-    return { groupName: "Indirect Expenses", nature: "EXPENSES", confidence: 0 };
-  }
-
   try {
-    const jsonMatch = content.text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) throw new Error("No JSON");
-    return JSON.parse(jsonMatch[0]) as { groupName: string; nature: string; confidence: number };
+    return JSON.parse(response.choices[0].message.content ?? '{}') as { groupName: string; nature: string; confidence: number };
   } catch {
-    return { groupName: "Indirect Expenses", nature: "EXPENSES", confidence: 0.3 };
+    return { groupName: 'Indirect Expenses', nature: 'EXPENSES', confidence: 0.3 };
   }
 }

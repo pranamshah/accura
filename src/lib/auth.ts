@@ -1,36 +1,32 @@
-import NextAuth from "next-auth";
-import Credentials from "next-auth/providers/credentials";
-import { PrismaAdapter } from "@auth/prisma-adapter";
-import bcrypt from "bcryptjs";
-import prisma from "@/lib/db/prisma";
+import NextAuth from 'next-auth';
+import Credentials from 'next-auth/providers/credentials';
+import sql from './db/index';
+import bcrypt from 'bcryptjs';
+import { z } from 'zod';
 
-export const { handlers, signIn, signOut, auth } = NextAuth({
-  adapter: PrismaAdapter(prisma),
-  session: { strategy: "jwt" },
-  pages: {
-    signIn: "/login",
-  },
+export const { auth, handlers, signIn, signOut } = NextAuth({
   providers: [
     Credentials({
-      name: "credentials",
-      credentials: {
-        email: { label: "Email", type: "email" },
-        password: { label: "Password", type: "password" },
-      },
       async authorize(credentials) {
-        if (!credentials?.email || !credentials?.password) return null;
+        const parsed = z
+          .object({ email: z.string().email(), password: z.string().min(1) })
+          .safeParse(credentials);
+        if (!parsed.success) return null;
 
-        const user = await prisma.user.findUnique({
-          where: { email: credentials.email as string },
-        });
-
+        const rows = await sql`SELECT * FROM users WHERE email = ${parsed.data.email} LIMIT 1`;
+        const user = rows[0] as { id: string; email: string; name: string; role: string; avatar: string; password: string } | undefined;
         if (!user || !user.password) return null;
 
-        const isValid = await bcrypt.compare(
-          credentials.password as string,
-          user.password
-        );
-        if (!isValid) return null;
+        const valid = await bcrypt.compare(parsed.data.password, user.password);
+        if (!valid) return null;
+
+        // Get user's companies
+        const companies = await sql`
+          SELECT c.id, c.name FROM companies c
+          JOIN company_users cu ON c.id = cu.company_id
+          WHERE cu.user_id = ${user.id}
+          LIMIT 10
+        `;
 
         return {
           id: user.id,
@@ -38,26 +34,35 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           name: user.name,
           role: user.role,
           avatar: user.avatar,
+          companies,
         };
       },
     }),
   ],
+  session: { strategy: 'jwt' },
   callbacks: {
-    async jwt({ token, user }) {
+    jwt({ token, user }) {
       if (user) {
         token.id = user.id;
         token.role = (user as { role?: string }).role;
         token.avatar = (user as { avatar?: string }).avatar;
+        token.companies = (user as { companies?: unknown[] }).companies;
       }
       return token;
     },
-    async session({ session, token }) {
-      if (token) {
+    session({ session, token }) {
+      if (session.user) {
         session.user.id = token.id as string;
-        session.user.role = token.role as string;
-        session.user.avatar = token.avatar as string;
+        (session.user as { role?: string }).role = token.role as string;
+        (session.user as { avatar?: string }).avatar = token.avatar as string;
+        (session.user as { companies?: unknown[] }).companies = token.companies as unknown[];
       }
       return session;
     },
   },
+  pages: {
+    signIn: '/login',
+    error: '/login',
+  },
+  trustHost: true,
 });
