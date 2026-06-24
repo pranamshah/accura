@@ -26,13 +26,13 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const [row] = await sql`
       INSERT INTO items (
-        company_id, name, alias, code, hsn_code, sac_code, category,
+        company_id, name, alias, code, hsn_code, sac_code, unit, category, group_name,
         igst_rate, cgst_rate, sgst_rate, cess_rate,
         opening_stock, opening_rate, reorder_level,
         cost_price, selling_price, description
       ) VALUES (
         ${body.companyId}, ${body.name}, ${body.alias ?? null}, ${body.code ?? null},
-        ${body.hsnCode ?? null}, ${body.sacCode ?? null}, ${body.category ?? null},
+        ${body.hsnCode ?? null}, ${body.sacCode ?? null}, ${body.unit ?? 'Nos'}, ${body.category ?? null}, ${body.groupName ?? null},
         ${body.igstRate ?? 18}, ${body.cgstRate ?? 9}, ${body.sgstRate ?? 9}, ${body.cessRate ?? 0},
         ${body.openingStock ?? 0}, ${body.openingRate ?? 0}, ${body.reorderLevel ?? null},
         ${body.costPrice ?? null}, ${body.sellingPrice ?? null}, ${body.description ?? null}

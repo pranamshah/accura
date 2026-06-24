@@ -9,7 +9,7 @@ export default function CreateStockItemPage() {
   const { activeCompany } = useTallyStore();
   const [form, setForm] = useState({
     name: '', alias: '', code: '', hsnCode: '', sacCode: '',
-    category: '', igstRate: '18', cgstRate: '9', sgstRate: '9', cessRate: '0',
+    unit: 'Nos', category: '', igstRate: '18', cgstRate: '9', sgstRate: '9', cessRate: '0',
     openingStock: '0', openingRate: '0', reorderLevel: '',
     costPrice: '', sellingPrice: '', description: '',
   });
@@ -66,7 +66,8 @@ export default function CreateStockItemPage() {
     { label: 'Item Code / SKU', field: 'code' },
     { label: 'HSN Code', field: 'hsnCode' },
     { label: 'SAC Code', field: 'sacCode' },
-    { label: 'Category', field: 'category' },
+    { label: 'Unit (Nos/Kg/Mtr/Box)', field: 'unit' },
+    { label: 'Category / Group', field: 'category' },
     { label: 'Description', field: 'description' },
   ];
 

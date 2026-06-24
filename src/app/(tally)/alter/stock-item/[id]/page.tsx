@@ -36,10 +36,10 @@ export default function EditStockItemPage({ params }: { params: Promise<{ id: st
             name: it.name ?? '',
             code: it.code ?? '',
             hsnCode: it.hsnCode ?? '',
-            unit: it.unit ?? '',
-            openingQty: String(it.openingQty ?? 0),
+            unit: it.unit ?? 'Nos',
+            openingQty: String(it.openingStock ?? it.openingQty ?? 0),
             openingRate: String(it.openingRate ?? 0),
-            gstRate: String(it.gstRate ?? 18),
+            gstRate: String(it.igstRate ?? it.gstRate ?? 18),
             groupName: it.groupName ?? '',
             description: it.description ?? '',
           });

@@ -13,18 +13,16 @@ export async function GET(req: NextRequest) {
     const rows = await sql`
       SELECT
         i.id as item_id, i.name as item_name,
-        COALESCE(sg.name, 'Primary') as group_name,
-        COALESCE(u.symbol, 'Nos') as unit,
+        COALESCE(i.group_name, i.category, 'Primary') as group_name,
+        COALESCE(i.unit, 'Nos') as unit,
         i.opening_stock, i.opening_rate,
         COALESCE(SUM(CASE WHEN v.type IN ('PURCHASE','GOODS_RECEIPT','OPENING_BALANCE') THEN il.quantity ELSE 0 END), 0) as inward_qty,
         COALESCE(SUM(CASE WHEN v.type IN ('SALES','DELIVERY_NOTE') THEN il.quantity ELSE 0 END), 0) as outward_qty
       FROM items i
-      LEFT JOIN stock_groups sg ON i.stock_group_id = sg.id
-      LEFT JOIN units u ON i.unit_id = u.id
       LEFT JOIN inventory_lines il ON il.item_id = i.id
       LEFT JOIN vouchers v ON v.id = il.voucher_id AND v.status != 'CANCELLED'
       WHERE i.company_id = ${companyId} AND i.is_active = true
-      GROUP BY i.id, i.name, sg.name, u.symbol, i.opening_stock, i.opening_rate
+      GROUP BY i.id, i.name, i.group_name, i.category, i.unit, i.opening_stock, i.opening_rate
       ORDER BY i.name
     `;
 

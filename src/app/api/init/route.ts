@@ -232,6 +232,29 @@ export async function GET() {
     `;
 
     await sql`
+      CREATE TABLE IF NOT EXISTS stock_groups (
+        id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+        company_id TEXT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        parent_id TEXT,
+        is_system BOOLEAN NOT NULL DEFAULT false,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `;
+
+    await sql`
+      CREATE TABLE IF NOT EXISTS units (
+        id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+        company_id TEXT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        symbol TEXT NOT NULL,
+        formal_name TEXT,
+        is_simple BOOLEAN NOT NULL DEFAULT true,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `;
+
+    await sql`
       CREATE TABLE IF NOT EXISTS godowns (
         id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
         company_id TEXT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
@@ -239,6 +262,10 @@ export async function GET() {
         is_main BOOLEAN NOT NULL DEFAULT false
       )
     `;
+
+    // Safe migration: add columns if they don't exist yet
+    await sql`ALTER TABLE items ADD COLUMN IF NOT EXISTS unit TEXT DEFAULT 'Nos'`;
+    await sql`ALTER TABLE items ADD COLUMN IF NOT EXISTS group_name TEXT`;
 
     await sql`
       CREATE TABLE IF NOT EXISTS audit_logs (
