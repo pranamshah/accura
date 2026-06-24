@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useQueryClient } from "@tanstack/react-query";
+import { useRouter } from "next/navigation";
 import { useCompanyStore } from "@/store/companyStore";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { Button } from "@/components/ui/button";
@@ -27,6 +28,7 @@ const FY_MONTHS = [
 export default function CompanySettingsPage() {
   const { activeCompany, setActiveCompany, companies, setCompanies } = useCompanyStore();
   const queryClient = useQueryClient();
+  const router = useRouter();
   const [saving, setSaving] = useState(false);
   const [mode, setMode] = useState<"edit" | "create">("edit");
   const { register, reset, handleSubmit } = useForm();
@@ -63,6 +65,7 @@ export default function CompanySettingsPage() {
             financialYearStart: Number(data.financialYearStart) || 4,
           }),
         });
+        if (res.status === 401) { router.replace("/login"); return; }
         if (!res.ok) {
           const err = await res.json() as { error?: string };
           throw new Error(err.error ?? "Failed to create company");
@@ -81,6 +84,7 @@ export default function CompanySettingsPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ companyId: activeCompany.id, ...data }),
         });
+        if (res.status === 401) { router.replace("/login"); return; }
         if (!res.ok) throw new Error("Failed to save");
         const json = await res.json() as { company: Company };
         setActiveCompany(json.company);

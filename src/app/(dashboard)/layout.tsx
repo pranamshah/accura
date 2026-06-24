@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { useCompanyStore } from "@/store/companyStore";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { TopBar } from "@/components/layout/TopBar";
@@ -10,23 +11,27 @@ import type { Company } from "@/types";
 
 function CompanyLoader() {
   const { setActiveCompany, setCompanies } = useCompanyStore();
+  const router = useRouter();
 
   useEffect(() => {
     async function load() {
       try {
         const res = await fetch("/api/companies");
+        if (res.status === 401) {
+          router.replace("/login");
+          return;
+        }
         if (!res.ok) return;
         const data = await res.json() as { companies: Company[] };
         if (data.companies.length === 0) return;
         setCompanies(data.companies);
-        // Always refresh activeCompany with latest DB data
         const currentId = useCompanyStore.getState().activeCompany?.id;
         const refreshed = currentId
           ? (data.companies.find((c) => c.id === currentId) ?? data.companies[0])
           : data.companies[0];
         setActiveCompany(refreshed);
       } catch {
-        // silently fail — user might not be authenticated yet
+        // network error — stay on page
       }
     }
     void load();
