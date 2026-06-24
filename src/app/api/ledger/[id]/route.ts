@@ -80,9 +80,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     WHERE id = ${id}
     RETURNING *
   `;
-  const ledger = rows[0] as { company_id: string };
+  const ledger = rows[0] as { company_id: string; group_id: string };
 
-  const grpRows = await sql`SELECT id, name, nature FROM ledger_groups WHERE id = ${(ledger as { group_id: string }).group_id} LIMIT 1`;
+  const grpRows = await sql`SELECT id, name, nature FROM ledger_groups WHERE id = ${ledger.group_id} LIMIT 1`;
 
   await sql`
     INSERT INTO audit_logs (id, user_id, company_id, action, entity, entity_id, old_data, new_data)

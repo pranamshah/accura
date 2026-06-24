@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useForm, useFieldArray, Controller } from "react-hook-form";
+import { useForm, useFieldArray, Controller, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
@@ -86,7 +86,7 @@ export function VoucherForm({ type, voucherId, initialData, onSuccess }: Voucher
     getValues,
     formState: { errors },
   } = useForm<VoucherFormData>({
-    resolver: zodResolver(voucherFormSchema),
+    resolver: zodResolver(voucherFormSchema) as unknown as Resolver<VoucherFormData>,
     defaultValues: {
       date: new Date().toISOString().split("T")[0],
       entries: [

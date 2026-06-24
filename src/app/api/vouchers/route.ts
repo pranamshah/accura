@@ -127,9 +127,9 @@ export async function GET(req: NextRequest) {
 
   const vouchersWithDetails = (vouchers as { id: string }[]).map((v) => ({
     ...v,
-    entries: (entries as { voucher_id: string }[]).filter((e) => e.voucher_id === v.id).map((e) => ({ ...e, ledger: { id: (e as { ledger_id: string }).ledger_id, name: (e as { ledger_name: string }).ledger_name, gstin: (e as { ledger_gstin: string }).ledger_gstin } })),
+    entries: (entries as { voucher_id: string; ledger_id: string; ledger_name: string; ledger_gstin: string }[]).filter((e) => e.voucher_id === v.id).map((e) => ({ ...e, ledger: { id: e.ledger_id, name: e.ledger_name, gstin: e.ledger_gstin } })),
     gstLines: (gstLines as { voucher_id: string }[]).filter((g) => g.voucher_id === v.id),
-    inventoryLines: (inventoryLines as { voucher_id: string }[]).filter((il) => il.voucher_id === v.id).map((il) => ({ ...il, item: { id: (il as { item_id: string }).item_id, name: (il as { item_name: string }).item_name, unit: { symbol: (il as { unit_symbol: string }).unit_symbol } } })),
+    inventoryLines: (inventoryLines as { voucher_id: string; item_id: string; item_name: string; unit_symbol: string }[]).filter((il) => il.voucher_id === v.id).map((il) => ({ ...il, item: { id: il.item_id, name: il.item_name, unit: { symbol: il.unit_symbol } } })),
   }));
 
   return NextResponse.json({ vouchers: vouchersWithDetails, total: Number((countRows[0] as { count: string }).count) });
@@ -156,55 +156,49 @@ export async function POST(req: NextRequest) {
   const fy = getFinancialYear(new Date(data.date));
   const number = generateVoucherNumber(data.type, count + 1, fy.label);
 
-  const voucher = await sql.transaction(async (txn) => {
-    const vRows = await txn`
+  const voucherId = crypto.randomUUID();
+
+  await sql.transaction([
+    sql`
       INSERT INTO vouchers (id, company_id, type, number, date, narration, reference, total_amount, status,
         gst_applicable, place_of_supply, reverse_charge, cost_centre_id, ai_generated)
-      VALUES (gen_random_uuid()::text, ${data.companyId}, ${data.type}, ${number}, ${data.date},
+      VALUES (${voucherId}, ${data.companyId}, ${data.type}, ${number}, ${data.date},
         ${data.narration ?? null}, ${data.reference ?? null}, ${totalDr}, ${data.status},
         ${data.gstApplicable}, ${data.placeOfSupply ?? null}, ${data.reverseCharge},
         ${data.costCentreId ?? null}, ${data.aiGenerated})
-      RETURNING *
-    `;
-    const v = vRows[0] as { id: string };
-
-    for (const e of data.entries) {
-      await txn`
+    `,
+    ...data.entries.map((e) =>
+      sql`
         INSERT INTO voucher_entries (id, voucher_id, ledger_id, type, amount, narration, bill_ref, bill_date)
-        VALUES (gen_random_uuid()::text, ${v.id}, ${e.ledgerId}, ${e.type}, ${e.amount},
+        VALUES (${crypto.randomUUID()}, ${voucherId}, ${e.ledgerId}, ${e.type}, ${e.amount},
           ${e.narration ?? null}, ${e.billRef ?? null}, ${e.billDate ?? null})
-      `;
-    }
+      `
+    ),
+    ...(data.gstLines ?? []).map((g) =>
+      sql`
+        INSERT INTO gst_lines (id, voucher_id, hsn_code, description, quantity, rate, taxable_value,
+          igst_rate, cgst_rate, sgst_rate, cess_rate, igst_amount, cgst_amount, sgst_amount, cess_amount, total_tax)
+        VALUES (${crypto.randomUUID()}, ${voucherId}, ${g.hsnCode ?? null}, ${g.description ?? null},
+          ${g.quantity ?? null}, ${g.rate ?? null}, ${g.taxableValue},
+          ${g.igstRate}, ${g.cgstRate}, ${g.sgstRate}, ${g.cessRate},
+          ${g.igstAmount}, ${g.cgstAmount}, ${g.sgstAmount}, ${g.cessAmount}, ${g.totalTax})
+      `
+    ),
+    ...(data.inventoryLines ?? []).map((il) =>
+      sql`
+        INSERT INTO inventory_lines (id, voucher_id, item_id, godown_id, batch_no, serial_no, quantity, rate, amount, discount)
+        VALUES (${crypto.randomUUID()}, ${voucherId}, ${il.itemId}, ${il.godownId ?? null},
+          ${il.batchNo ?? null}, ${il.serialNo ?? null}, ${il.quantity}, ${il.rate}, ${il.amount}, ${il.discount})
+      `
+    ),
+  ]);
 
-    if (data.gstLines?.length) {
-      for (const g of data.gstLines) {
-        await txn`
-          INSERT INTO gst_lines (id, voucher_id, hsn_code, description, quantity, rate, taxable_value,
-            igst_rate, cgst_rate, sgst_rate, cess_rate, igst_amount, cgst_amount, sgst_amount, cess_amount, total_tax)
-          VALUES (gen_random_uuid()::text, ${v.id}, ${g.hsnCode ?? null}, ${g.description ?? null},
-            ${g.quantity ?? null}, ${g.rate ?? null}, ${g.taxableValue},
-            ${g.igstRate}, ${g.cgstRate}, ${g.sgstRate}, ${g.cessRate},
-            ${g.igstAmount}, ${g.cgstAmount}, ${g.sgstAmount}, ${g.cessAmount}, ${g.totalTax})
-        `;
-      }
-    }
-
-    if (data.inventoryLines?.length) {
-      for (const il of data.inventoryLines) {
-        await txn`
-          INSERT INTO inventory_lines (id, voucher_id, item_id, godown_id, batch_no, serial_no, quantity, rate, amount, discount)
-          VALUES (gen_random_uuid()::text, ${v.id}, ${il.itemId}, ${il.godownId ?? null},
-            ${il.batchNo ?? null}, ${il.serialNo ?? null}, ${il.quantity}, ${il.rate}, ${il.amount}, ${il.discount})
-        `;
-      }
-    }
-
-    return v;
-  });
+  const vRows = await sql`SELECT * FROM vouchers WHERE id = ${voucherId}`;
+  const voucher = vRows[0] as { id: string };
 
   await sql`
     INSERT INTO audit_logs (id, user_id, company_id, action, entity, entity_id, new_data)
-    VALUES (gen_random_uuid()::text, ${session.user.id}, ${data.companyId}, 'CREATE', 'Voucher', ${(voucher as { id: string }).id}, ${JSON.stringify({ type: data.type, number, amount: totalDr })})
+    VALUES (${crypto.randomUUID()}, ${session.user.id}, ${data.companyId}, 'CREATE', 'Voucher', ${voucher.id}, ${JSON.stringify({ type: data.type, number, amount: totalDr })})
   `;
 
   return NextResponse.json({ voucher }, { status: 201 });

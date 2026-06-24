@@ -39,7 +39,7 @@ export async function GET(req: NextRequest) {
     };
 
     const dataUri = await generateInvoicePDF(
-      voucherWithDetails as Parameters<typeof generateInvoicePDF>[0],
+      voucherWithDetails as unknown as Parameters<typeof generateInvoicePDF>[0],
       {
         name: company.name,
         address: company.address || undefined,

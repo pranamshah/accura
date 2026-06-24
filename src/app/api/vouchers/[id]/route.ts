@@ -82,8 +82,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const { entries, gstLines, inventoryLines: _inv, ...voucherData } = body;
 
-  const voucher = await sql.transaction(async (txn) => {
-    const updated = await txn`
+  const queries = [
+    sql`
       UPDATE vouchers SET
         narration = COALESCE(${voucherData.narration as string ?? null}, narration),
         reference = COALESCE(${voucherData.reference as string ?? null}, reference),
@@ -93,35 +93,37 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         place_of_supply = COALESCE(${voucherData.placeOfSupply as string ?? null}, place_of_supply),
         updated_at = NOW()
       WHERE id = ${id}
-      RETURNING *
-    `;
+    `,
+  ];
 
-    if (entries) {
-      await txn`DELETE FROM voucher_entries WHERE voucher_id = ${id}`;
-      for (const e of entries) {
-        await txn`
-          INSERT INTO voucher_entries (id, voucher_id, ledger_id, type, amount, narration)
-          VALUES (gen_random_uuid()::text, ${id}, ${e.ledgerId}, ${e.type}, ${e.amount}, ${e.narration ?? null})
-        `;
-      }
+  if (entries) {
+    queries.push(sql`DELETE FROM voucher_entries WHERE voucher_id = ${id}`);
+    for (const e of entries) {
+      queries.push(sql`
+        INSERT INTO voucher_entries (id, voucher_id, ledger_id, type, amount, narration)
+        VALUES (${crypto.randomUUID()}, ${id}, ${e.ledgerId}, ${e.type}, ${e.amount}, ${e.narration ?? null})
+      `);
     }
+  }
 
-    if (gstLines) {
-      await txn`DELETE FROM gst_lines WHERE voucher_id = ${id}`;
-      for (const g of gstLines) {
-        await txn`
-          INSERT INTO gst_lines (id, voucher_id, hsn_code, taxable_value, igst_rate, cgst_rate, sgst_rate,
-            igst_amount, cgst_amount, sgst_amount, total_tax)
-          VALUES (gen_random_uuid()::text, ${id}, ${g.hsnCode as string ?? null}, ${g.taxableValue as number},
-            ${g.igstRate as number ?? 0}, ${g.cgstRate as number ?? 0}, ${g.sgstRate as number ?? 0},
-            ${g.igstAmount as number ?? 0}, ${g.cgstAmount as number ?? 0}, ${g.sgstAmount as number ?? 0},
-            ${g.totalTax as number ?? 0})
-        `;
-      }
+  if (gstLines) {
+    queries.push(sql`DELETE FROM gst_lines WHERE voucher_id = ${id}`);
+    for (const g of gstLines) {
+      queries.push(sql`
+        INSERT INTO gst_lines (id, voucher_id, hsn_code, taxable_value, igst_rate, cgst_rate, sgst_rate,
+          igst_amount, cgst_amount, sgst_amount, total_tax)
+        VALUES (${crypto.randomUUID()}, ${id}, ${g.hsnCode as string ?? null}, ${g.taxableValue as number},
+          ${g.igstRate as number ?? 0}, ${g.cgstRate as number ?? 0}, ${g.sgstRate as number ?? 0},
+          ${g.igstAmount as number ?? 0}, ${g.cgstAmount as number ?? 0}, ${g.sgstAmount as number ?? 0},
+          ${g.totalTax as number ?? 0})
+      `);
     }
+  }
 
-    return updated[0];
-  });
+  await sql.transaction(queries);
+
+  const updatedRows = await sql`SELECT * FROM vouchers WHERE id = ${id} LIMIT 1`;
+  const voucher = updatedRows[0];
 
   await sql`
     INSERT INTO audit_logs (id, user_id, company_id, action, entity, entity_id, old_data, new_data)

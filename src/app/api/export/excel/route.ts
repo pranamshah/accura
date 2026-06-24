@@ -58,7 +58,7 @@ export async function GET(req: NextRequest) {
       gstLines: (gstLines as { voucher_id: string }[]).filter((g) => g.voucher_id === v.id),
     }));
 
-    buffer = await exportGSTR1(vouchersWithDetails as Parameters<typeof exportGSTR1>[0], { name: company.name, gstin: company.gstin || undefined }, `${month}/${year}`);
+    buffer = await exportGSTR1(vouchersWithDetails as unknown as Parameters<typeof exportGSTR1>[0], { name: company.name, gstin: company.gstin || undefined }, `${month}/${year}`);
     filename = `gstr1-${month}-${year}.xlsx`;
   } else if (type === 'stock') {
     const stock = await sql`
@@ -76,7 +76,7 @@ export async function GET(req: NextRequest) {
       unit: item.unit_id ? { id: item.unit_id, symbol: item.unit_symbol, name: item.unit_name } : null,
     }));
 
-    buffer = await exportStockSummary(itemsWithStock as Parameters<typeof exportStockSummary>[0], { name: company.name });
+    buffer = await exportStockSummary(itemsWithStock as unknown as Parameters<typeof exportStockSummary>[0], { name: company.name });
     filename = 'stock-summary.xlsx';
   } else if (type === 'daybook') {
     const vouchers = await sql`SELECT v.* FROM vouchers v WHERE v.company_id = ${companyId} AND v.status = 'ACTIVE' AND v.date >= ${from} AND v.date <= ${to} ORDER BY v.date ASC`;
@@ -88,13 +88,13 @@ export async function GET(req: NextRequest) {
       entries: (entries as { voucher_id: string; ledger_name: string }[]).filter((e) => e.voucher_id === v.id).map((e) => ({ ...e, ledger: { name: e.ledger_name } })),
     }));
 
-    buffer = await exportDayBook(vouchersWithEntries as Parameters<typeof exportDayBook>[0], { name: company.name }, { from: new Date(from).toLocaleDateString('en-IN'), to: new Date(to).toLocaleDateString('en-IN') });
+    buffer = await exportDayBook(vouchersWithEntries as unknown as Parameters<typeof exportDayBook>[0], { name: company.name }, { from: new Date(from).toLocaleDateString('en-IN'), to: new Date(to).toLocaleDateString('en-IN') });
     filename = 'daybook.xlsx';
   } else {
     return NextResponse.json({ error: 'Invalid type' }, { status: 400 });
   }
 
-  return new NextResponse(buffer, {
+  return new NextResponse(new Uint8Array(buffer), {
     headers: {
       'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       'Content-Disposition': `attachment; filename="${filename}"`,

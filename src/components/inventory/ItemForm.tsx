@@ -1,6 +1,6 @@
 "use client";
 
-import { useForm, Controller } from "react-hook-form";
+import { useForm, Controller, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
@@ -64,7 +64,7 @@ export function ItemForm({ itemId, onSuccess, initialData }: ItemFormProps) {
   }, [activeCompany?.id]);
 
   const { register, control, handleSubmit, watch, setValue, formState: { errors } } = useForm<FormData>({
-    resolver: zodResolver(schema),
+    resolver: zodResolver(schema) as unknown as Resolver<FormData>,
     defaultValues: { igstRate: 0, cgstRate: 0, sgstRate: 0, cessRate: 0, openingStock: 0, openingRate: 0, ...initialData },
   });
 

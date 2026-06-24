@@ -69,7 +69,7 @@ export async function exportTrialBalance(
   sheet.getColumn(3).width = 18;
   sheet.getColumn(4).width = 18;
 
-  return workbook.xlsx.writeBuffer() as Promise<Buffer>;
+  return workbook.xlsx.writeBuffer() as unknown as Promise<Buffer>;
 }
 
 export async function exportGSTR1(
@@ -153,7 +153,7 @@ export async function exportGSTR1(
     });
   });
 
-  return workbook.xlsx.writeBuffer() as Promise<Buffer>;
+  return workbook.xlsx.writeBuffer() as unknown as Promise<Buffer>;
 }
 
 export async function exportStockSummary(
@@ -208,7 +208,7 @@ export async function exportStockSummary(
 
   sheet.columns.forEach((col) => { if (col.number) col.width = 18; });
 
-  return workbook.xlsx.writeBuffer() as Promise<Buffer>;
+  return workbook.xlsx.writeBuffer() as unknown as Promise<Buffer>;
 }
 
 export async function exportDayBook(
@@ -280,5 +280,5 @@ export async function exportDayBook(
   sheet.getColumn(6).width = 15;
   sheet.getColumn(7).width = 30;
 
-  return workbook.xlsx.writeBuffer() as Promise<Buffer>;
+  return workbook.xlsx.writeBuffer() as unknown as Promise<Buffer>;
 }

@@ -3,10 +3,18 @@ import type { AISuggestion, VoucherType } from '@/types';
 
 // Groq — 100% free AI inference (groq.com, no credit card required)
 // Free tier: 14,400 requests/day, fast Llama 3.3 70B
-const client = new OpenAI({
-  apiKey: process.env.GROQ_API_KEY ?? '',
-  baseURL: 'https://api.groq.com/openai/v1',
-});
+// Lazily constructed so the build (and any request without GROQ_API_KEY) never
+// instantiates the client, which throws when no credentials are present.
+let _client: OpenAI | null = null;
+function client(): OpenAI {
+  if (!_client) {
+    _client = new OpenAI({
+      apiKey: process.env.GROQ_API_KEY ?? '',
+      baseURL: 'https://api.groq.com/openai/v1',
+    });
+  }
+  return _client;
+}
 
 const MODEL = 'llama-3.3-70b-versatile';
 
@@ -37,7 +45,7 @@ export async function suggestJournalEntry(
     };
   }
 
-  const response = await client.chat.completions.create({
+  const response = await client().chat.completions.create({
     model: MODEL,
     max_tokens: 800,
     messages: [
@@ -86,7 +94,7 @@ export async function generateNarration(
     return `${voucherType} - ${amounts}`;
   }
 
-  const response = await client.chat.completions.create({
+  const response = await client().chat.completions.create({
     model: MODEL,
     max_tokens: 150,
     messages: [
@@ -120,7 +128,7 @@ export async function detectAnomalies(
     number: v.number,
   }));
 
-  const response = await client.chat.completions.create({
+  const response = await client().chat.completions.create({
     model: MODEL,
     max_tokens: 1000,
     messages: [
@@ -153,7 +161,7 @@ export async function getReportInsights(
     return 'Add GROQ_API_KEY (free at groq.com) to enable AI report insights.';
   }
 
-  const response = await client.chat.completions.create({
+  const response = await client().chat.completions.create({
     model: MODEL,
     max_tokens: 512,
     messages: [
@@ -179,7 +187,7 @@ export async function classifyLedger(
     return { groupName: 'Indirect Expenses', nature: 'EXPENSES', confidence: 0 };
   }
 
-  const response = await client.chat.completions.create({
+  const response = await client().chat.completions.create({
     model: MODEL,
     max_tokens: 200,
     messages: [

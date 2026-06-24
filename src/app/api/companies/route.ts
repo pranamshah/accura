@@ -56,82 +56,76 @@ export async function POST(req: NextRequest) {
   }
 
   const d = parsed.data;
+  const userId = session.user.id;
+  const companyId = crypto.randomUUID();
 
-  const result = await sql.transaction(async (txn) => {
-    const coRows = await txn`
+  const groupDefs: Array<{ name: string; nature: string; parent?: string }> = [
+    { name: 'Capital Account', nature: 'LIABILITIES' },
+    { name: 'Current Liabilities', nature: 'LIABILITIES' },
+    { name: 'Sundry Creditors', nature: 'LIABILITIES', parent: 'Current Liabilities' },
+    { name: 'Duties & Taxes', nature: 'LIABILITIES', parent: 'Current Liabilities' },
+    { name: 'Provisions', nature: 'LIABILITIES', parent: 'Current Liabilities' },
+    { name: 'Loans (Liability)', nature: 'LIABILITIES' },
+    { name: 'Fixed Assets', nature: 'ASSETS' },
+    { name: 'Current Assets', nature: 'ASSETS' },
+    { name: 'Cash-in-Hand', nature: 'ASSETS', parent: 'Current Assets' },
+    { name: 'Bank Accounts', nature: 'ASSETS', parent: 'Current Assets' },
+    { name: 'Sundry Debtors', nature: 'ASSETS', parent: 'Current Assets' },
+    { name: 'Stock-in-Hand', nature: 'ASSETS', parent: 'Current Assets' },
+    { name: 'Loans & Advances (Asset)', nature: 'ASSETS', parent: 'Current Assets' },
+    { name: 'Investments', nature: 'ASSETS' },
+    { name: 'Sales Accounts', nature: 'INCOME' },
+    { name: 'Other Income', nature: 'INCOME' },
+    { name: 'Purchase Accounts', nature: 'EXPENSES' },
+    { name: 'Direct Expenses', nature: 'EXPENSES' },
+    { name: 'Indirect Expenses', nature: 'EXPENSES' },
+  ];
+
+  const groupId: Record<string, string> = {};
+  for (const gd of groupDefs) groupId[gd.name] = crypto.randomUUID();
+
+  const ledgers: Array<[string, string, boolean]> = [
+    ['Cash-in-Hand', 'Cash', true],
+    ['Bank Accounts', 'HDFC Bank', false],
+    ['Sales Accounts', 'Sales', true],
+    ['Purchase Accounts', 'Purchases', true],
+    ['Duties & Taxes', 'CGST Output', true],
+    ['Duties & Taxes', 'SGST Output', true],
+    ['Duties & Taxes', 'IGST Output', true],
+    ['Current Assets', 'CGST Input', true],
+    ['Current Assets', 'SGST Input', true],
+    ['Current Assets', 'IGST Input', true],
+    ['Duties & Taxes', 'TDS Payable', true],
+    ['Current Liabilities', 'Salary Payable', true],
+    ['Indirect Expenses', 'Rent', false],
+    ['Capital Account', 'Capital Account', true],
+    ['Capital Account', 'Retained Earnings', true],
+    ['Indirect Expenses', 'Bank Charges', false],
+    ['Indirect Expenses', 'Depreciation', false],
+    ['Indirect Expenses', 'Travelling Expenses', false],
+    ['Indirect Expenses', 'Salary', false],
+  ];
+
+  await sql.transaction([
+    sql`
       INSERT INTO companies (id, name, legal_name, gstin, pan, tan, address, city, state, state_code, pincode, phone, email, website, financial_year_start, business_type, tax_registered)
-      VALUES (gen_random_uuid()::text, ${d.name}, ${d.legalName ?? null}, ${d.gstin ?? null}, ${d.pan ?? null}, ${d.tan ?? null},
+      VALUES (${companyId}, ${d.name}, ${d.legalName ?? null}, ${d.gstin ?? null}, ${d.pan ?? null}, ${d.tan ?? null},
               ${d.address ?? null}, ${d.city ?? null}, ${d.state ?? null}, ${d.stateCode ?? null}, ${d.pincode ?? null},
               ${d.phone ?? null}, ${d.email ?? null}, ${d.website ?? null}, ${d.financialYearStart}, ${d.businessType}, ${d.taxRegistered})
-      RETURNING *
-    `;
-    const co = coRows[0] as { id: string };
+    `,
+    sql`INSERT INTO company_users (id, company_id, user_id, role) VALUES (${crypto.randomUUID()}, ${companyId}, ${userId}, 'ADMIN')`,
+    sql`INSERT INTO units (id, company_id, name, symbol, is_system) VALUES (${crypto.randomUUID()}, ${companyId}, 'Numbers', 'NOS', true)`,
+    sql`INSERT INTO units (id, company_id, name, symbol, is_system) VALUES (${crypto.randomUUID()}, ${companyId}, 'Kilograms', 'KG', true)`,
+    sql`INSERT INTO godowns (id, company_id, name, is_main) VALUES (${crypto.randomUUID()}, ${companyId}, 'Main Location', true)`,
+    ...groupDefs.map((gd) =>
+      sql`INSERT INTO ledger_groups (id, company_id, name, nature, is_system, parent_id) VALUES (${groupId[gd.name]}, ${companyId}, ${gd.name}, ${gd.nature}, true, ${gd.parent ? groupId[gd.parent] : null})`
+    ),
+    ...ledgers.map(([grpName, name, isSystem]) =>
+      sql`INSERT INTO ledgers (id, company_id, group_id, name, is_system) VALUES (${crypto.randomUUID()}, ${companyId}, ${groupId[grpName]}, ${name}, ${isSystem})`
+    ),
+  ]);
 
-    await txn`
-      INSERT INTO company_users (id, company_id, user_id, role)
-      VALUES (gen_random_uuid()::text, ${co.id}, ${session.user!.id}, 'ADMIN')
-    `;
+  const rows = await sql`SELECT * FROM companies WHERE id = ${companyId}`;
 
-    await txn`INSERT INTO units (id, company_id, name, symbol, is_system) VALUES (gen_random_uuid()::text, ${co.id}, 'Numbers', 'NOS', true)`;
-    await txn`INSERT INTO units (id, company_id, name, symbol, is_system) VALUES (gen_random_uuid()::text, ${co.id}, 'Kilograms', 'KG', true)`;
-    await txn`INSERT INTO godowns (id, company_id, name, is_main) VALUES (gen_random_uuid()::text, ${co.id}, 'Main Location', true)`;
-
-    const g = async (name: string, nature: string, parentId?: string) => {
-      const r = await txn`INSERT INTO ledger_groups (id,company_id,name,nature,is_system,parent_id) VALUES (gen_random_uuid()::text,${co.id},${name},${nature},true,${parentId ?? null}) RETURNING id`;
-      return (r[0] as { id: string }).id;
-    };
-
-    const capitalId = await g('Capital Account', 'LIABILITIES');
-    const currLiabId = await g('Current Liabilities', 'LIABILITIES');
-    await g('Sundry Creditors', 'LIABILITIES', currLiabId);
-    const dutiesTaxId = await g('Duties & Taxes', 'LIABILITIES', currLiabId);
-    await g('Provisions', 'LIABILITIES', currLiabId);
-    await g('Loans (Liability)', 'LIABILITIES');
-    await g('Fixed Assets', 'ASSETS');
-    const currAssetsId = await g('Current Assets', 'ASSETS');
-    const cashGrpId = await g('Cash-in-Hand', 'ASSETS', currAssetsId);
-    const bankGrpId = await g('Bank Accounts', 'ASSETS', currAssetsId);
-    await g('Sundry Debtors', 'ASSETS', currAssetsId);
-    await g('Stock-in-Hand', 'ASSETS', currAssetsId);
-    await g('Loans & Advances (Asset)', 'ASSETS', currAssetsId);
-    await g('Investments', 'ASSETS');
-    const salesGrpId = await g('Sales Accounts', 'INCOME');
-    await g('Other Income', 'INCOME');
-    const purchaseGrpId = await g('Purchase Accounts', 'EXPENSES');
-    await g('Direct Expenses', 'EXPENSES');
-    const indirectExpId = await g('Indirect Expenses', 'EXPENSES');
-
-    const ledgers = [
-      [cashGrpId, 'Cash', true],
-      [bankGrpId, 'HDFC Bank', false],
-      [salesGrpId, 'Sales', true],
-      [purchaseGrpId, 'Purchases', true],
-      [dutiesTaxId, 'CGST Output', true],
-      [dutiesTaxId, 'SGST Output', true],
-      [dutiesTaxId, 'IGST Output', true],
-      [currAssetsId, 'CGST Input', true],
-      [currAssetsId, 'SGST Input', true],
-      [currAssetsId, 'IGST Input', true],
-      [dutiesTaxId, 'TDS Payable', true],
-      [currLiabId, 'Salary Payable', true],
-      [indirectExpId, 'Rent', false],
-      [capitalId, 'Capital Account', true],
-      [capitalId, 'Retained Earnings', true],
-      [indirectExpId, 'Bank Charges', false],
-      [indirectExpId, 'Depreciation', false],
-      [indirectExpId, 'Travelling Expenses', false],
-      [indirectExpId, 'Salary', false],
-    ];
-
-    for (const [groupId, name, isSystem] of ledgers) {
-      await txn`
-        INSERT INTO ledgers (id, company_id, group_id, name, is_system)
-        VALUES (gen_random_uuid()::text, ${co.id}, ${groupId as string}, ${name as string}, ${isSystem as boolean})
-      `;
-    }
-
-    return co;
-  });
-
-  return NextResponse.json({ company: result }, { status: 201 });
+  return NextResponse.json({ company: rows[0] }, { status: 201 });
 }

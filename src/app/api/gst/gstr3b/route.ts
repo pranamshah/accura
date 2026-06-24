@@ -35,10 +35,10 @@ export async function GET(req: NextRequest) {
 
   const vouchersWithGst = (vouchers as { id: string; type: string }[]).map((v) => ({
     ...v,
-    gstLines: (gstLines as { voucher_id: string }[]).filter((g) => g.voucher_id === v.id),
+    gstLines: (gstLines as { voucher_id: string; taxable_value: number; igst_amount: number; cgst_amount: number; sgst_amount: number }[]).filter((g) => g.voucher_id === v.id),
   }));
 
-  const gstr3bData = generateGSTR3BData(vouchersWithGst as Parameters<typeof generateGSTR3BData>[0]);
+  const gstr3bData = generateGSTR3BData(vouchersWithGst as unknown as Parameters<typeof generateGSTR3BData>[0]);
 
   const outputSales = vouchersWithGst.filter((v) => v.type === 'SALES');
   const inputPurchases = vouchersWithGst.filter((v) => v.type === 'PURCHASE');

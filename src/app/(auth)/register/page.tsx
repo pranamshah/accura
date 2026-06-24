@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useForm } from "react-hook-form";
+import { useForm, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
@@ -51,7 +51,7 @@ export default function RegisterPage() {
 
   const form1 = useForm<Step1>({ resolver: zodResolver(step1Schema) });
   const form2 = useForm<Step2>({
-    resolver: zodResolver(step2Schema),
+    resolver: zodResolver(step2Schema) as unknown as Resolver<Step2>,
     defaultValues: { businessType: "PRIVATE_LIMITED", financialYearStart: 4 },
   });
 

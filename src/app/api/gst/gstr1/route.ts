@@ -43,7 +43,7 @@ export async function GET(req: NextRequest) {
     gstLines = await sql`SELECT * FROM gst_lines WHERE voucher_id = ANY(${vIds})`;
   }
 
-  type VoucherRow = { id: string; total_amount: number; place_of_supply: string | null };
+  type VoucherRow = { id: string; number: string; date: string; total_amount: number; place_of_supply: string | null };
   type EntryRow = { voucher_id: string; type: string; ledger_name: string; ledger_gstin: string | null };
   type GstLineRow = { voucher_id: string; taxable_value: number; igst_amount: number; cgst_amount: number; sgst_amount: number; cess_amount: number; total_tax: number };
 
@@ -84,7 +84,7 @@ export async function GET(req: NextRequest) {
     }));
 
   const gstr1Json = generateGSTR1JSON(
-    vouchersWithDetails as Parameters<typeof generateGSTR1JSON>[0],
+    vouchersWithDetails as unknown as Parameters<typeof generateGSTR1JSON>[0],
     company.gstin || '',
     month,
     parseInt(year)

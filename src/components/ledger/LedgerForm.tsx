@@ -1,6 +1,6 @@
 "use client";
 
-import { useForm, Controller } from "react-hook-form";
+import { useForm, Controller, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
@@ -59,7 +59,7 @@ export function LedgerForm({ ledgerId, onSuccess, initialData }: LedgerFormProps
   }, [activeCompany?.id]);
 
   const { register, control, handleSubmit, watch, formState: { errors } } = useForm<FormData>({
-    resolver: zodResolver(schema),
+    resolver: zodResolver(schema) as unknown as Resolver<FormData>,
     defaultValues: {
       openingBalance: 0,
       openingBalanceType: "DEBIT",
