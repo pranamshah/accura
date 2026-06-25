@@ -268,6 +268,19 @@ export async function GET() {
     await sql`ALTER TABLE items ADD COLUMN IF NOT EXISTS group_name TEXT`;
 
     await sql`
+      CREATE TABLE IF NOT EXISTS ca_share_log (
+        id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+        company_id TEXT NOT NULL,
+        shared_by TEXT,
+        ca_email TEXT,
+        period_from DATE,
+        period_to DATE,
+        selections JSONB,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `;
+
+    await sql`
       CREATE TABLE IF NOT EXISTS audit_logs (
         id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
         user_id TEXT, company_id TEXT,

@@ -6,6 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import { formatDate, formatDateISO, formatCurrency, calculateGST } from '@/lib/utils';
 import LedgerCombobox from '@/components/tally/LedgerCombobox';
 import { toast } from 'sonner';
+import { clickToChatInvoice } from '@/lib/whatsapp';
 import type { Ledger, Item } from '@/types';
 
 const VOUCHER_LABELS: Record<string, string> = {
@@ -76,6 +77,7 @@ export default function VoucherPage() {
   const [entries, setEntries] = useState<EntryRow[]>([makeEntry(), makeEntry()]);
   const [invoiceRows, setInvoiceRows] = useState<InvoiceRow[]>([makeInvoiceRow()]);
   const [saving, setSaving] = useState(false);
+  const [narrating, setNarrating] = useState(false);
 
   // Voucher counter
   const { data: voucherCount } = useQuery({
@@ -134,6 +136,42 @@ export default function VoucherPage() {
     return s + gst.total;
   }, 0);
   const invoiceTotal = invoiceSubtotal + invoiceGST;
+
+  const handleAutoNarrate = useCallback(async () => {
+    setNarrating(true);
+    try {
+      const amount = isInvoice ? invoiceTotal : drTotal;
+      const entryList = isInvoice
+        ? [{ ledgerName: partyLedger?.name, type: type === 'sales' ? 'DEBIT' : 'CREDIT', amount }]
+        : entries.filter((e) => e.ledger).map((e) => ({ ledgerName: e.ledger?.name, type: e.type, amount: parseFloat(e.amount) || 0 }));
+      const res = await fetch('/api/ai/narration', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ voucherType: label, entries: entryList, amount }),
+      });
+      const data = await res.json();
+      if (data.narration) setNarration(data.narration);
+    } catch {
+      toast.error('Auto narration failed');
+    } finally {
+      setNarrating(false);
+    }
+  }, [isInvoice, invoiceTotal, drTotal, partyLedger, type, entries, label]);
+
+  function handleWhatsApp() {
+    if (!partyLedger) { toast.error('Select a party first'); return; }
+    const mobile = (partyLedger as Ledger & { mobileNo?: string }).mobileNo || '';
+    if (!mobile) { toast.error('No mobile number for this party. Update ledger master.'); return; }
+    const url = clickToChatInvoice({
+      partyName: partyLedger.name,
+      partyMobile: mobile,
+      invoiceNo: voucherNumber,
+      date,
+      total: invoiceTotal,
+      companyName: activeCompany?.name || '',
+    });
+    window.open(url, '_blank');
+  }
 
   const handleSave = useCallback(async () => {
     if (!activeCompany) { toast.error('No company selected'); return; }
@@ -213,14 +251,14 @@ export default function VoucherPage() {
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if ((e.ctrlKey && e.key.toLowerCase() === 'a')) {
-        e.preventDefault();
-        handleSave();
-      }
+      if (e.ctrlKey && e.key.toLowerCase() === 'a') { e.preventDefault(); handleSave(); }
+      if (e.altKey && e.key.toLowerCase() === 'n') { e.preventDefault(); handleAutoNarrate(); }
+      if (e.altKey && e.key.toLowerCase() === 'w' && isInvoice) { e.preventDefault(); handleWhatsApp(); }
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [handleSave]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [handleSave, handleAutoNarrate, isInvoice]);
 
   if (!activeCompany) {
     return <div style={{ padding: 16, color: '#a0a0a0' }}>No company selected. Go to Gateway (F3) first.</div>;
@@ -437,25 +475,36 @@ export default function VoucherPage() {
       {/* Narration */}
       <div className="voucher-field-row" style={{ marginTop: 8 }}>
         <span className="voucher-field-label">Narration</span>
-        <div className="voucher-field-value">
-          <input type="text" value={narration} onChange={(e) => setNarration(e.target.value)} placeholder="Entry narration" />
+        <div className="voucher-field-value" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <input type="text" value={narration} onChange={(e) => setNarration(e.target.value)} placeholder="Entry narration" style={{ flex: 1 }} />
+          <button className="tally-btn" onClick={handleAutoNarrate} disabled={narrating}
+            style={{ fontSize: 10, padding: '2px 8px', whiteSpace: 'nowrap', color: 'var(--tally-cyan)' }}>
+            {narrating ? '...' : '✨ Auto [Alt+N]'}
+          </button>
         </div>
       </div>
 
       {/* Actions */}
-      <div style={{ display: 'flex', gap: 8, padding: '12px', borderTop: '1px solid #2a2a4a', marginTop: 8 }}>
-        <button
-          className="tally-btn primary"
-          onClick={handleSave}
-          disabled={saving}
-        >
+      <div style={{ display: 'flex', gap: 8, padding: '12px', borderTop: '1px solid var(--tally-border)', marginTop: 8, flexWrap: 'wrap' }}>
+        <button className="tally-btn primary" onClick={handleSave} disabled={saving}>
           {saving ? 'Saving...' : 'Accept  [Ctrl+A]'}
         </button>
-        <button className="tally-btn" onClick={() => router.push('/gateway')}>
-          Abandon  [Esc]
+        <button className="tally-btn" onClick={() => router.push('/gateway')}>Abandon  [Esc]</button>
+        <button className="tally-btn" style={{ color: 'var(--tally-cyan)' }} onClick={() => router.push('/ai/smart-entry')}>
+          ✨ Smart Entry [Alt+I]
         </button>
-        <div style={{ marginLeft: 'auto', color: '#a0a0a0', fontSize: 11, alignSelf: 'center' }}>
-          Ctrl+A to save | Esc to cancel | Alt+G to navigate
+        {isInvoice && (
+          <button className="tally-btn" style={{ color: '#25D366' }} onClick={handleWhatsApp}>
+            WhatsApp [Alt+W]
+          </button>
+        )}
+        {isInvoice && (
+          <button className="tally-btn" style={{ color: 'var(--tally-yellow)' }} onClick={() => router.push('/invoices')}>
+            View Invoices
+          </button>
+        )}
+        <div style={{ marginLeft: 'auto', color: 'var(--tally-text-dim)', fontSize: 11, alignSelf: 'center' }}>
+          Ctrl+A: Save | Alt+N: Narrate | Alt+G: Navigate
         </div>
       </div>
     </div>

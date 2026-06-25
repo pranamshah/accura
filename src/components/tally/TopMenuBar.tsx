@@ -76,7 +76,7 @@ export default function TopMenuBar() {
       title: 'Import',
       items: [
         { label: 'Import from Excel', action: () => toast.info('Import not implemented') },
-        { label: 'Import Bank Statement', action: () => router.push('/banking/reconciliation') },
+        { label: 'Import Bank Statement', action: () => router.push('/banking/import-statement') },
       ],
     },
     {
@@ -92,7 +92,16 @@ export default function TopMenuBar() {
       items: [
         { label: 'E-mail Voucher', action: () => toast.info('E-mail not configured') },
         { label: 'E-mail Report', action: () => toast.info('E-mail not configured') },
-        { label: 'Share with CA', action: () => router.push('/ca-portal') },
+        { label: 'Share with CA  [Alt+M]', action: () => router.push('/utilities/share-with-ca') },
+      ],
+    },
+    {
+      title: 'AI Tools',
+      items: [
+        { label: 'Smart Entry  [Alt+I]', action: () => router.push('/ai/smart-entry') },
+        { label: 'Ask Accura  [Alt+Q]', action: () => router.push('/ai/ask') },
+        { label: 'Anomaly Scanner', action: () => router.push('/display/anomaly-scanner') },
+        { label: 'AI Assistant', action: () => router.push('/ai') },
       ],
     },
     {

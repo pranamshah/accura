@@ -2,6 +2,8 @@
 import { useQuery } from '@tanstack/react-query';
 import { useTallyStore } from '@/store/tallyStore';
 import { formatCurrency, formatDate, formatDateISO } from '@/lib/utils';
+import { clickToChatReminder } from '@/lib/whatsapp';
+import { toast } from 'sonner';
 import { useState } from 'react';
 
 interface OutstandingRow {
@@ -14,6 +16,22 @@ interface OutstandingRow {
 export default function ReceivablesPage() {
   const { activeCompany, toDate } = useTallyStore();
   const [asOf, setAsOf] = useState(formatDateISO(new Date(toDate)));
+
+  function sendReminder(row: OutstandingRow) {
+    const mobile = (row as OutstandingRow & { mobileNo?: string }).mobileNo || '';
+    if (!mobile) { toast.error(`No mobile number for ${row.ledgerName}. Update ledger master.`); return; }
+    const bill = row.bills[0];
+    const url = clickToChatReminder({
+      partyName: row.ledgerName,
+      partyMobile: mobile,
+      invoiceNo: bill?.billRef || '-',
+      amount: row.totalDue,
+      date: bill?.billDate || asOf,
+      overdueDays: bill?.ageDays || 0,
+      companyName: activeCompany?.name || '',
+    });
+    window.open(url, '_blank');
+  }
 
   const { data, isLoading } = useQuery<{ rows: OutstandingRow[]; total: number }>({
     queryKey: ['outstanding-receivables', activeCompany?.id, asOf],
@@ -46,6 +64,7 @@ export default function ReceivablesPage() {
               <th>Bill Date</th>
               <th className="report-amount">Age (Days)</th>
               <th className="report-amount">Amount Due</th>
+              <th style={{ width: 80 }}></th>
             </tr>
           </thead>
           <tbody>
@@ -54,6 +73,10 @@ export default function ReceivablesPage() {
                 <tr key={row.ledgerId} className="group-row">
                   <td colSpan={4}>{row.ledgerName}</td>
                   <td className="report-amount" style={{ color: '#00FF7F' }}>{formatCurrency(row.totalDue)}</td>
+                  <td>
+                    <button className="tally-btn" style={{ fontSize: 10, padding: '2px 6px', color: '#25D366' }}
+                      onClick={() => sendReminder(row)}>WA Reminder</button>
+                  </td>
                 </tr>
                 {row.bills.map((b, bi) => (
                   <tr key={bi}>
@@ -69,7 +92,7 @@ export default function ReceivablesPage() {
               </>
             ))}
             {(data?.rows ?? []).length === 0 && (
-              <tr><td colSpan={5} style={{ textAlign: 'center', color: '#a0a0a0', padding: 20 }}>No outstanding receivables</td></tr>
+              <tr><td colSpan={6} style={{ textAlign: 'center', color: '#a0a0a0', padding: 20 }}>No outstanding receivables</td></tr>
             )}
           </tbody>
           {(data?.rows ?? []).length > 0 && (
@@ -77,6 +100,7 @@ export default function ReceivablesPage() {
               <tr className="total-row">
                 <td colSpan={4}>TOTAL RECEIVABLES</td>
                 <td className="report-amount" style={{ color: '#00FF7F' }}>{formatCurrency(data?.total ?? 0)}</td>
+                <td></td>
               </tr>
             </tfoot>
           )}

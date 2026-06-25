@@ -9,6 +9,8 @@ import type { DashboardData } from '@/types';
 const MASTERS_VOUCHERS = [
   { key: 'D', label: 'Dashboard', path: '/dashboard' },
   { key: 'V', label: 'Vouchers', path: '/vouchers/payment' },
+  { key: 'I', label: 'Smart Entry', path: '/ai/smart-entry' },
+  { key: 'N', label: 'Invoices', path: '/invoices' },
   { key: 'C', label: 'Create Master', path: '/create/ledger' },
   { key: 'A', label: 'Alter Master', path: '/alter/ledger' },
   { key: 'E', label: 'Employees', path: '/create/employee' },
@@ -22,6 +24,8 @@ const REPORTS_ANALYTICS = [
   { key: 'S', label: 'Stock Summary', path: '/display/stock-summary' },
   { key: 'R', label: 'Ratio Analysis', path: '/display/ratio-analysis' },
   { key: 'G', label: 'GST Reports', path: '/display/gst/gstr1' },
+  { key: 'X', label: 'Ask Accura', path: '/ai/ask' },
+  { key: 'Z', label: 'Anomaly Scanner', path: '/display/anomaly-scanner' },
 ];
 
 const ALL_ITEMS = [...MASTERS_VOUCHERS, ...REPORTS_ANALYTICS];

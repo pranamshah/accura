@@ -48,6 +48,9 @@ export default function TallyLayout({ children }: { children: React.ReactNode })
     'f8': () => router.push('/vouchers/sales'),
     'f9': () => router.push('/vouchers/purchase'),
     'ctrl+q': () => router.push('/gateway'),
+    'alt+i': () => router.push('/ai/smart-entry'),
+    'alt+q': () => router.push('/ai/ask'),
+    'alt+m': () => router.push('/utilities/share-with-ca'),
   });
 
   return (
