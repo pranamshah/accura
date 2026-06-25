@@ -32,6 +32,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         address = COALESCE(${body.address ?? null}, address),
         city = COALESCE(${body.city ?? null}, city),
         state = COALESCE(${body.state ?? null}, state),
+        state_code = COALESCE(${body.stateCode ?? null}, state_code),
         pincode = COALESCE(${body.pincode ?? null}, pincode),
         phone = COALESCE(${body.phone ?? null}, phone),
         email = COALESCE(${body.email ?? null}, email),

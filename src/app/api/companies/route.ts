@@ -1,20 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import sql from '@/lib/db';
 import { getSession } from '@/lib/session';
-import { transformRows } from '@/lib/utils';
+import { transformRow, transformRows } from '@/lib/utils';
 import { seedCompanyDefaults } from '@/lib/seed-company';
 
 export async function GET() {
   try {
     const session = await getSession();
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-    const rows = await sql`
-      SELECT * FROM companies
-      WHERE id IN (SELECT company_id FROM users WHERE id = ${session.id})
-      OR id = ${session.companyId ?? ''}
-      ORDER BY name
-    `;
+    // Single-user mode — return all companies; no complex subquery that
+    // references potentially-missing columns (users.company_id).
+    const rows = await sql`SELECT * FROM companies ORDER BY name`;
     return NextResponse.json({ companies: transformRows(rows) });
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 });
@@ -26,6 +22,8 @@ export async function POST(req: NextRequest) {
     const session = await getSession();
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const body = await req.json();
+    if (!body.name?.trim()) return NextResponse.json({ error: 'Company name is required' }, { status: 400 });
+
     const [company] = await sql`
       INSERT INTO companies (name, legal_name, gstin, pan, tan, address, city, state, state_code, pincode,
                              phone, email, website, bank_name, bank_account, bank_ifsc, bank_branch,
@@ -40,8 +38,19 @@ export async function POST(req: NextRequest) {
               ${JSON.stringify(body.features ?? {})}::jsonb)
       RETURNING *
     `;
+
+    // Seed default ledger groups + Cash/Bank ledgers for the new company
     await seedCompanyDefaults(company.id);
-    return NextResponse.json({ company });
+
+    // Point the user at the new company so GET /api/companies returns it
+    // and so switching companies works after page refresh.
+    try {
+      await sql`UPDATE users SET company_id = ${company.id} WHERE id = ${session.id}`;
+    } catch {
+      // company_id column may not exist yet — non-fatal, init will add it
+    }
+
+    return NextResponse.json({ company: transformRow(company) }, { status: 201 });
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 });
   }

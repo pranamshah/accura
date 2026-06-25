@@ -28,11 +28,40 @@ export default function TallyLayout({ children }: { children: React.ReactNode })
 
   useEffect(() => {
     // Run schema migrations once per session (idempotent — safe to call repeatedly).
-    // This ensures ALTER TABLE migrations in /api/init are applied on first load
-    // without requiring the user to manually hit the endpoint.
     if (typeof window !== 'undefined' && !sessionStorage.getItem('accura-init-done')) {
       fetch('/api/init').then(() => sessionStorage.setItem('accura-init-done', '1')).catch(() => {});
     }
+  }, []);
+
+  // Enter key → move focus to the next field inside any .tally-form (Tally-style navigation)
+  useEffect(() => {
+    function onEnter(e: KeyboardEvent) {
+      if (e.key !== 'Enter') return;
+      const target = e.target as HTMLElement;
+      const tag = target.tagName.toLowerCase();
+      if (!['input', 'select'].includes(tag)) return;
+      // Don't intercept Enter in textareas or when a modifier is held
+      if (e.ctrlKey || e.altKey || e.metaKey) return;
+
+      const form = target.closest('.tally-form, [data-enter-nav]');
+      if (!form) return;
+
+      const focusable = Array.from(
+        form.querySelectorAll<HTMLElement>('input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled])')
+      ).filter((el) => el.offsetParent !== null && !el.hidden);
+
+      const idx = focusable.indexOf(target);
+      if (idx >= 0 && idx < focusable.length - 1) {
+        e.preventDefault();
+        focusable[idx + 1].focus();
+        // Auto-select text in the next input so typing replaces it
+        if (focusable[idx + 1].tagName.toLowerCase() === 'input') {
+          (focusable[idx + 1] as HTMLInputElement).select();
+        }
+      }
+    }
+    window.addEventListener('keydown', onEnter);
+    return () => window.removeEventListener('keydown', onEnter);
   }, []);
 
   useEffect(() => {

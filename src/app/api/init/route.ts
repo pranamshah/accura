@@ -264,14 +264,17 @@ export async function GET() {
       )
     `;
 
-    // Safe migration: add columns if they don't exist yet
-    await sql`ALTER TABLE items ADD COLUMN IF NOT EXISTS unit TEXT DEFAULT 'Nos'`;
-    await sql`ALTER TABLE items ADD COLUMN IF NOT EXISTS group_name TEXT`;
+    // ── Safe migrations — idempotent ALTER TABLE IF NOT EXISTS ────────────────
+    // These fix "column X does not exist" errors on live DBs whose tables were
+    // created before the column was added to the CREATE TABLE statement.
 
-    // Reconcile companies table — live DBs created before these columns were
-    // added never get them from CREATE TABLE IF NOT EXISTS. This fixes the
-    // "column features of relation companies does not exist" error.
-    await sql`ALTER TABLE companies ADD COLUMN IF NOT EXISTS features JSONB NOT NULL DEFAULT '{}'`;
+    // users
+    await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS name TEXT`;
+    await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'ADMIN'`;
+    await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS company_id TEXT`;
+    await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`;
+
+    // companies
     await sql`ALTER TABLE companies ADD COLUMN IF NOT EXISTS legal_name TEXT`;
     await sql`ALTER TABLE companies ADD COLUMN IF NOT EXISTS gstin TEXT`;
     await sql`ALTER TABLE companies ADD COLUMN IF NOT EXISTS pan TEXT`;
@@ -289,14 +292,85 @@ export async function GET() {
     await sql`ALTER TABLE companies ADD COLUMN IF NOT EXISTS bank_ifsc TEXT`;
     await sql`ALTER TABLE companies ADD COLUMN IF NOT EXISTS bank_branch TEXT`;
     await sql`ALTER TABLE companies ADD COLUMN IF NOT EXISTS logo_url TEXT`;
+    await sql`ALTER TABLE companies ADD COLUMN IF NOT EXISTS financial_year_start INT NOT NULL DEFAULT 4`;
+    await sql`ALTER TABLE companies ADD COLUMN IF NOT EXISTS currency TEXT NOT NULL DEFAULT 'INR'`;
+    await sql`ALTER TABLE companies ADD COLUMN IF NOT EXISTS currency_symbol TEXT NOT NULL DEFAULT '₹'`;
     await sql`ALTER TABLE companies ADD COLUMN IF NOT EXISTS tax_registered BOOLEAN NOT NULL DEFAULT false`;
     await sql`ALTER TABLE companies ADD COLUMN IF NOT EXISTS composite_dealer BOOLEAN NOT NULL DEFAULT false`;
+    await sql`ALTER TABLE companies ADD COLUMN IF NOT EXISTS features JSONB NOT NULL DEFAULT '{}'`;
     await sql`ALTER TABLE companies ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`;
 
-    // Reconcile ledgers table — add columns added after initial deploy.
+    // ledger_groups
+    await sql`ALTER TABLE ledger_groups ADD COLUMN IF NOT EXISTS company_id TEXT`;
+    await sql`ALTER TABLE ledger_groups ADD COLUMN IF NOT EXISTS alias TEXT`;
+    await sql`ALTER TABLE ledger_groups ADD COLUMN IF NOT EXISTS parent_id TEXT`;
+    await sql`ALTER TABLE ledger_groups ADD COLUMN IF NOT EXISTS is_system BOOLEAN NOT NULL DEFAULT false`;
+    await sql`ALTER TABLE ledger_groups ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`;
+
+    // ledgers
+    await sql`ALTER TABLE ledgers ADD COLUMN IF NOT EXISTS company_id TEXT`;
+    await sql`ALTER TABLE ledgers ADD COLUMN IF NOT EXISTS group_id TEXT`;
+    await sql`ALTER TABLE ledgers ADD COLUMN IF NOT EXISTS alias TEXT`;
+    await sql`ALTER TABLE ledgers ADD COLUMN IF NOT EXISTS opening_balance NUMERIC(15,2) NOT NULL DEFAULT 0`;
+    await sql`ALTER TABLE ledgers ADD COLUMN IF NOT EXISTS opening_balance_type TEXT NOT NULL DEFAULT 'DEBIT'`;
+    await sql`ALTER TABLE ledgers ADD COLUMN IF NOT EXISTS gstin TEXT`;
+    await sql`ALTER TABLE ledgers ADD COLUMN IF NOT EXISTS pan TEXT`;
+    await sql`ALTER TABLE ledgers ADD COLUMN IF NOT EXISTS mobile_no TEXT`;
+    await sql`ALTER TABLE ledgers ADD COLUMN IF NOT EXISTS email TEXT`;
+    await sql`ALTER TABLE ledgers ADD COLUMN IF NOT EXISTS address TEXT`;
+    await sql`ALTER TABLE ledgers ADD COLUMN IF NOT EXISTS city TEXT`;
+    await sql`ALTER TABLE ledgers ADD COLUMN IF NOT EXISTS state TEXT`;
     await sql`ALTER TABLE ledgers ADD COLUMN IF NOT EXISTS state_code TEXT`;
+    await sql`ALTER TABLE ledgers ADD COLUMN IF NOT EXISTS pincode TEXT`;
+    await sql`ALTER TABLE ledgers ADD COLUMN IF NOT EXISTS credit_limit NUMERIC(15,2)`;
+    await sql`ALTER TABLE ledgers ADD COLUMN IF NOT EXISTS credit_days INT`;
+    await sql`ALTER TABLE ledgers ADD COLUMN IF NOT EXISTS is_party BOOLEAN NOT NULL DEFAULT false`;
+    await sql`ALTER TABLE ledgers ADD COLUMN IF NOT EXISTS party_type TEXT`;
+    await sql`ALTER TABLE ledgers ADD COLUMN IF NOT EXISTS gst_type TEXT DEFAULT 'REGULAR'`;
+    await sql`ALTER TABLE ledgers ADD COLUMN IF NOT EXISTS tds_applicable BOOLEAN NOT NULL DEFAULT false`;
+    await sql`ALTER TABLE ledgers ADD COLUMN IF NOT EXISTS tds_section_id TEXT`;
     await sql`ALTER TABLE ledgers ADD COLUMN IF NOT EXISTS tds_rate NUMERIC(5,2) DEFAULT 0`;
+    await sql`ALTER TABLE ledgers ADD COLUMN IF NOT EXISTS bank_name TEXT`;
+    await sql`ALTER TABLE ledgers ADD COLUMN IF NOT EXISTS bank_account TEXT`;
+    await sql`ALTER TABLE ledgers ADD COLUMN IF NOT EXISTS bank_ifsc TEXT`;
     await sql`ALTER TABLE ledgers ADD COLUMN IF NOT EXISTS description TEXT`;
+    await sql`ALTER TABLE ledgers ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT true`;
+    await sql`ALTER TABLE ledgers ADD COLUMN IF NOT EXISTS is_system BOOLEAN NOT NULL DEFAULT false`;
+    await sql`ALTER TABLE ledgers ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`;
+
+    // vouchers
+    await sql`ALTER TABLE vouchers ADD COLUMN IF NOT EXISTS company_id TEXT`;
+    await sql`ALTER TABLE vouchers ADD COLUMN IF NOT EXISTS narration TEXT`;
+    await sql`ALTER TABLE vouchers ADD COLUMN IF NOT EXISTS reference TEXT`;
+    await sql`ALTER TABLE vouchers ADD COLUMN IF NOT EXISTS gst_applicable BOOLEAN NOT NULL DEFAULT false`;
+    await sql`ALTER TABLE vouchers ADD COLUMN IF NOT EXISTS gst_type TEXT`;
+    await sql`ALTER TABLE vouchers ADD COLUMN IF NOT EXISTS place_of_supply TEXT`;
+    await sql`ALTER TABLE vouchers ADD COLUMN IF NOT EXISTS reverse_charge BOOLEAN NOT NULL DEFAULT false`;
+    await sql`ALTER TABLE vouchers ADD COLUMN IF NOT EXISTS e_invoice_irn TEXT`;
+    await sql`ALTER TABLE vouchers ADD COLUMN IF NOT EXISTS e_invoice_qr TEXT`;
+    await sql`ALTER TABLE vouchers ADD COLUMN IF NOT EXISTS e_way_bill_no TEXT`;
+    await sql`ALTER TABLE vouchers ADD COLUMN IF NOT EXISTS e_way_bill_expiry DATE`;
+    await sql`ALTER TABLE vouchers ADD COLUMN IF NOT EXISTS party_ledger_id TEXT`;
+    await sql`ALTER TABLE vouchers ADD COLUMN IF NOT EXISTS cost_centre_id TEXT`;
+    await sql`ALTER TABLE vouchers ADD COLUMN IF NOT EXISTS ai_generated BOOLEAN NOT NULL DEFAULT false`;
+    await sql`ALTER TABLE vouchers ADD COLUMN IF NOT EXISTS attachments TEXT[] DEFAULT '{}'`;
+    await sql`ALTER TABLE vouchers ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`;
+
+    // voucher_entries
+    await sql`ALTER TABLE voucher_entries ADD COLUMN IF NOT EXISTS narration TEXT`;
+    await sql`ALTER TABLE voucher_entries ADD COLUMN IF NOT EXISTS bill_ref TEXT`;
+    await sql`ALTER TABLE voucher_entries ADD COLUMN IF NOT EXISTS bill_date DATE`;
+
+    // items
+    await sql`ALTER TABLE items ADD COLUMN IF NOT EXISTS unit TEXT DEFAULT 'Nos'`;
+    await sql`ALTER TABLE items ADD COLUMN IF NOT EXISTS group_name TEXT`;
+    await sql`ALTER TABLE items ADD COLUMN IF NOT EXISTS alias TEXT`;
+    await sql`ALTER TABLE items ADD COLUMN IF NOT EXISTS code TEXT`;
+    await sql`ALTER TABLE items ADD COLUMN IF NOT EXISTS hsn_code TEXT`;
+    await sql`ALTER TABLE items ADD COLUMN IF NOT EXISTS sac_code TEXT`;
+    await sql`ALTER TABLE items ADD COLUMN IF NOT EXISTS description TEXT`;
+    await sql`ALTER TABLE items ADD COLUMN IF NOT EXISTS cost_price NUMERIC(15,2)`;
+    await sql`ALTER TABLE items ADD COLUMN IF NOT EXISTS selling_price NUMERIC(15,2)`;
 
     // Backfill default chart of accounts for ALL companies — adds any missing
     // groups (including the new hierarchy groups) and wires parent relationships.
