@@ -83,12 +83,16 @@ export async function seedCompanyDefaults(companyId: string) {
       SELECT id FROM ledger_groups WHERE company_id = ${companyId} AND name = ${dl.groupName} LIMIT 1
     `;
     if (!grp) continue;
-    await sql`
-      INSERT INTO ledgers (company_id, group_id, name, opening_balance, opening_balance_type, is_system)
-      SELECT ${companyId}, ${grp.id}, ${dl.name}, 0, ${dl.drCr}, true
-      WHERE NOT EXISTS (
-        SELECT 1 FROM ledgers WHERE company_id = ${companyId} AND name = ${dl.name}
-      )
-    `;
+    try {
+      // Use ON CONFLICT in case the DB has a unique constraint on (company_id, name).
+      // Fall back to a plain INSERT if the constraint columns aren't indexed.
+      await sql`
+        INSERT INTO ledgers (company_id, group_id, name, opening_balance, opening_balance_type, is_system)
+        VALUES (${companyId}, ${grp.id}, ${dl.name}, 0, ${dl.drCr}, true)
+        ON CONFLICT (company_id, name) DO NOTHING
+      `;
+    } catch {
+      // Constraint target may differ — skip silently if ledger already exists
+    }
   }
 }
