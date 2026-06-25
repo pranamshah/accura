@@ -293,13 +293,15 @@ export async function GET() {
     await sql`ALTER TABLE companies ADD COLUMN IF NOT EXISTS composite_dealer BOOLEAN NOT NULL DEFAULT false`;
     await sql`ALTER TABLE companies ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`;
 
-    // Backfill default chart of accounts for any company missing ledger groups
-    // (e.g. companies created via the API before seeding was wired in).
-    const companiesNeedingGroups = await sql`
-      SELECT c.id FROM companies c
-      WHERE NOT EXISTS (SELECT 1 FROM ledger_groups g WHERE g.company_id = c.id)
-    `;
-    for (const c of companiesNeedingGroups) {
+    // Reconcile ledgers table — add columns added after initial deploy.
+    await sql`ALTER TABLE ledgers ADD COLUMN IF NOT EXISTS state_code TEXT`;
+    await sql`ALTER TABLE ledgers ADD COLUMN IF NOT EXISTS tds_rate NUMERIC(5,2) DEFAULT 0`;
+    await sql`ALTER TABLE ledgers ADD COLUMN IF NOT EXISTS description TEXT`;
+
+    // Backfill default chart of accounts for ALL companies — adds any missing
+    // groups (including the new hierarchy groups) and wires parent relationships.
+    const allCompanies = await sql`SELECT id FROM companies`;
+    for (const c of allCompanies) {
       await seedCompanyDefaults(c.id);
     }
 
