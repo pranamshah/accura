@@ -285,10 +285,97 @@ export async function GET() {
     await sql`CREATE INDEX IF NOT EXISTS idx_voucher_entries_ledger ON voucher_entries(ledger_id)`;
     await sql`CREATE INDEX IF NOT EXISTS idx_gst_lines_voucher ON gst_lines(voucher_id)`;
 
+    // Seed default admin user + company (only if no users exist yet)
+    const existingUsers = await sql`SELECT id FROM users LIMIT 1`;
+    let seeded = false;
+    if (!existingUsers[0]) {
+      const SEED_EMAIL = 'admin@accura.in';
+      const SEED_PASSWORD = 'Admin@1234';
+      const SEED_COMPANY = 'Accura Demo Company';
+
+      const encoder = new TextEncoder();
+      const hash = await crypto.subtle.digest('SHA-256', encoder.encode(SEED_PASSWORD));
+      const passwordHash = btoa(String.fromCharCode(...new Uint8Array(hash)));
+
+      const [company] = await sql`
+        INSERT INTO companies (name, financial_year_start, currency, currency_symbol, features)
+        VALUES (${SEED_COMPANY}, 4, 'INR', '₹', '{"gst":true,"inventory":true}')
+        RETURNING *
+      `;
+
+      const [user] = await sql`
+        INSERT INTO users (email, name, password_hash, role, company_id)
+        VALUES (${SEED_EMAIL}, 'Admin', ${passwordHash}, 'ADMIN', ${company.id})
+        RETURNING *
+      `;
+
+      const DEFAULT_GROUPS = [
+        { name: 'Capital Account', nature: 'LIABILITIES', alias: 'Capital' },
+        { name: 'Reserves & Surplus', nature: 'LIABILITIES', alias: 'Reserves' },
+        { name: 'Loans (Liability)', nature: 'LIABILITIES', alias: 'Loans' },
+        { name: 'Current Liabilities', nature: 'LIABILITIES', alias: 'CL' },
+        { name: 'Sundry Creditors', nature: 'LIABILITIES', alias: 'Creditors' },
+        { name: 'Duties & Taxes', nature: 'LIABILITIES', alias: 'Duties' },
+        { name: 'Provisions', nature: 'LIABILITIES', alias: 'Provisions' },
+        { name: 'Fixed Assets', nature: 'ASSETS', alias: 'FA' },
+        { name: 'Investments', nature: 'ASSETS', alias: 'Investments' },
+        { name: 'Current Assets', nature: 'ASSETS', alias: 'CA' },
+        { name: 'Cash-in-Hand', nature: 'ASSETS', alias: 'Cash' },
+        { name: 'Bank Accounts', nature: 'ASSETS', alias: 'Bank' },
+        { name: 'Sundry Debtors', nature: 'ASSETS', alias: 'Debtors' },
+        { name: 'Stock-in-Hand', nature: 'ASSETS', alias: 'Stock' },
+        { name: 'Loans & Advances (Asset)', nature: 'ASSETS', alias: 'Loans Asset' },
+        { name: 'Deposits (Asset)', nature: 'ASSETS', alias: 'Deposits' },
+        { name: 'Sales Accounts', nature: 'INCOME', alias: 'Sales' },
+        { name: 'Direct Income', nature: 'INCOME', alias: 'Direct Income' },
+        { name: 'Indirect Income', nature: 'INCOME', alias: 'Indirect Income' },
+        { name: 'Purchase Accounts', nature: 'EXPENSES', alias: 'Purchases' },
+        { name: 'Direct Expenses', nature: 'EXPENSES', alias: 'Direct Exp' },
+        { name: 'Indirect Expenses', nature: 'EXPENSES', alias: 'Indirect Exp' },
+        { name: 'Salary Expenses', nature: 'EXPENSES', alias: 'Salary' },
+      ];
+
+      for (const g of DEFAULT_GROUPS) {
+        await sql`
+          INSERT INTO ledger_groups (company_id, name, alias, nature, is_system)
+          VALUES (${company.id}, ${g.name}, ${g.alias}, ${g.nature}, true)
+          ON CONFLICT DO NOTHING
+        `;
+      }
+
+      const [cashGroup] = await sql`SELECT id FROM ledger_groups WHERE company_id = ${company.id} AND name = 'Cash-in-Hand' LIMIT 1`;
+      if (cashGroup) {
+        await sql`
+          INSERT INTO ledgers (company_id, group_id, name, opening_balance, opening_balance_type, is_system)
+          VALUES (${company.id}, ${cashGroup.id}, 'Cash', 0, 'DEBIT', true)
+          ON CONFLICT DO NOTHING
+        `;
+      }
+      const [bankGroup] = await sql`SELECT id FROM ledger_groups WHERE company_id = ${company.id} AND name = 'Bank Accounts' LIMIT 1`;
+      if (bankGroup) {
+        await sql`
+          INSERT INTO ledgers (company_id, group_id, name, opening_balance, opening_balance_type, is_system)
+          VALUES (${company.id}, ${bankGroup.id}, 'HDFC Bank', 0, 'DEBIT', true)
+          ON CONFLICT DO NOTHING
+        `;
+      }
+
+      console.log('Seeded default user:', user.id);
+      seeded = true;
+    }
+
     return NextResponse.json({
       success: true,
-      message: 'Database initialized successfully. Tables created. You can now register an account.',
-      nextStep: 'Go to /register to create your account and company.',
+      message: 'Database initialized successfully.',
+      ...(seeded ? {
+        credentials: {
+          email: 'admin@accura.in',
+          password: 'Admin@1234',
+          note: 'Change your password after first login via your company settings.',
+        },
+      } : {
+        note: 'Users already exist — no seed applied.',
+      }),
     });
   } catch (err) {
     console.error('Init error:', err);
