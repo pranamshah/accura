@@ -8,7 +8,9 @@ export default function BottomBar() {
   const [user, setUser] = useState<{ name?: string; email?: string } | null>(null);
 
   useEffect(() => {
-    fetch('/api/auth/me').then(r => r.json()).then(d => setUser(d.user)).catch(() => {});
+    fetch('/api/companies').then(r => r.json()).then(d => {
+      if (d.companies?.[0]) setUser({ name: 'Admin' });
+    }).catch(() => {});
   }, []);
 
   const fy = activeCompany

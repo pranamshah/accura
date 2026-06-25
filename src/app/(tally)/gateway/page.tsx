@@ -73,8 +73,7 @@ export default function GatewayPage() {
 
   async function navigate(item: typeof MENU_ITEMS[0]) {
     if (item.path === '__logout') {
-      await fetch('/api/auth/logout', { method: 'POST' });
-      router.replace('/login');
+      router.replace('/gateway');
       return;
     }
     router.push(item.path);

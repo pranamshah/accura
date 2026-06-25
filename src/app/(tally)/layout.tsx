@@ -20,7 +20,7 @@ export default function TallyLayout({ children }: { children: React.ReactNode })
     queryKey: ['companies'],
     queryFn: async () => {
       const res = await fetch('/api/companies');
-      if (res.status === 401) { router.replace('/login'); return { companies: [] }; }
+      if (!res.ok) return { companies: [] };
       return res.json() as Promise<{ companies: Company[] }>;
     },
   });

@@ -32,23 +32,17 @@ export default function TopMenuBar() {
     return () => document.removeEventListener('mousedown', handleClick);
   }, []);
 
-  async function handleLogout() {
-    await fetch('/api/auth/logout', { method: 'POST' });
-    router.replace('/login');
-  }
-
   const menus: Menu[] = [
     {
       title: 'Company',
       items: [
-        { label: 'Select Company', shortcut: 'Alt+F3', action: () => router.push('/gateway') },
-        { label: 'Create Company', action: () => router.push('/register') },
+        { label: 'Gateway of Tally', shortcut: 'F3', action: () => router.push('/gateway') },
         { label: 'Alter Company', shortcut: 'Ctrl+Alt+F3', action: () => router.push('/company/configure') },
         { divider: true, label: '' },
         { label: 'Backup', action: () => toast.info('Backup not implemented') },
         { label: 'Restore', action: () => toast.info('Restore not implemented') },
         { divider: true, label: '' },
-        { label: 'Quit', shortcut: 'Ctrl+Q', action: handleLogout },
+        { label: 'Quit', shortcut: 'Ctrl+Q', action: () => router.push('/gateway') },
       ],
     },
     {

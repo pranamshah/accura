@@ -38,7 +38,7 @@ export default function RightButtonBar() {
     if (action === 'features') { router.push('/company/features'); return; }
     if (action === 'configure') { router.push('/company/configure'); return; }
     if (action === 'logout') {
-      fetch('/api/auth/logout', { method: 'POST' }).then(() => router.replace('/login'));
+      router.replace('/gateway');
       return;
     }
     if (action.startsWith('/')) { router.push(action); return; }
