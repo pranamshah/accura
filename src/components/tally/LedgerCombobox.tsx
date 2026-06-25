@@ -11,7 +11,7 @@ interface Props {
   filterNature?: string[];
 }
 
-export default function LedgerCombobox({ value, onChange, placeholder = 'Select Ledger', filterNature }: Props) {
+export default function LedgerCombobox({ value, onChange, placeholder = 'Select Ledger' }: Props) {
   const { activeCompany } = useTallyStore();
   const [query, setQuery] = useState(value || '');
   const [open, setOpen] = useState(false);

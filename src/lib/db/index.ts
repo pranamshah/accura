@@ -7,7 +7,6 @@ function getInstance() {
   return _neon;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const sql = (strings: TemplateStringsArray, ...values: any[]): Promise<any[]> => {
   return getInstance()(strings, ...values) as Promise<any[]>;
 };

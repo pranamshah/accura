@@ -32,8 +32,7 @@ export default function CalculatorPanel() {
   function calculate() {
     try {
       const full = expr + display;
-      // eslint-disable-next-line no-eval
-      const result = eval(full.replace(/×/g, '*').replace(/÷/g, '/'));
+      const result = Function('"use strict"; return (' + full.replace(/×/g, '*').replace(/÷/g, '/') + ')')();
       setDisplay(String(parseFloat(result.toFixed(8))));
       setExpr('');
       setWaitingForOperand(true);
