@@ -37,6 +37,7 @@ export default function TopMenuBar() {
       title: 'Company',
       items: [
         { label: 'Accura Hub', shortcut: 'F3', action: () => router.push('/gateway') },
+        { label: 'Create Company', action: () => router.push('/company/create') },
         { label: 'Alter Company', shortcut: 'Ctrl+Alt+F3', action: () => router.push('/company/configure') },
         { divider: true, label: '' },
         { label: 'Backup', action: () => toast.info('Backup not implemented') },

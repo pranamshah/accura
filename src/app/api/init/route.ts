@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import sql from '@/lib/db';
+import { seedCompanyDefaults } from '@/lib/seed-company';
 
 export async function GET() {
   try {
@@ -267,6 +268,41 @@ export async function GET() {
     await sql`ALTER TABLE items ADD COLUMN IF NOT EXISTS unit TEXT DEFAULT 'Nos'`;
     await sql`ALTER TABLE items ADD COLUMN IF NOT EXISTS group_name TEXT`;
 
+    // Reconcile companies table — live DBs created before these columns were
+    // added never get them from CREATE TABLE IF NOT EXISTS. This fixes the
+    // "column features of relation companies does not exist" error.
+    await sql`ALTER TABLE companies ADD COLUMN IF NOT EXISTS features JSONB NOT NULL DEFAULT '{}'`;
+    await sql`ALTER TABLE companies ADD COLUMN IF NOT EXISTS legal_name TEXT`;
+    await sql`ALTER TABLE companies ADD COLUMN IF NOT EXISTS gstin TEXT`;
+    await sql`ALTER TABLE companies ADD COLUMN IF NOT EXISTS pan TEXT`;
+    await sql`ALTER TABLE companies ADD COLUMN IF NOT EXISTS tan TEXT`;
+    await sql`ALTER TABLE companies ADD COLUMN IF NOT EXISTS address TEXT`;
+    await sql`ALTER TABLE companies ADD COLUMN IF NOT EXISTS city TEXT`;
+    await sql`ALTER TABLE companies ADD COLUMN IF NOT EXISTS state TEXT`;
+    await sql`ALTER TABLE companies ADD COLUMN IF NOT EXISTS state_code TEXT`;
+    await sql`ALTER TABLE companies ADD COLUMN IF NOT EXISTS pincode TEXT`;
+    await sql`ALTER TABLE companies ADD COLUMN IF NOT EXISTS phone TEXT`;
+    await sql`ALTER TABLE companies ADD COLUMN IF NOT EXISTS email TEXT`;
+    await sql`ALTER TABLE companies ADD COLUMN IF NOT EXISTS website TEXT`;
+    await sql`ALTER TABLE companies ADD COLUMN IF NOT EXISTS bank_name TEXT`;
+    await sql`ALTER TABLE companies ADD COLUMN IF NOT EXISTS bank_account TEXT`;
+    await sql`ALTER TABLE companies ADD COLUMN IF NOT EXISTS bank_ifsc TEXT`;
+    await sql`ALTER TABLE companies ADD COLUMN IF NOT EXISTS bank_branch TEXT`;
+    await sql`ALTER TABLE companies ADD COLUMN IF NOT EXISTS logo_url TEXT`;
+    await sql`ALTER TABLE companies ADD COLUMN IF NOT EXISTS tax_registered BOOLEAN NOT NULL DEFAULT false`;
+    await sql`ALTER TABLE companies ADD COLUMN IF NOT EXISTS composite_dealer BOOLEAN NOT NULL DEFAULT false`;
+    await sql`ALTER TABLE companies ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`;
+
+    // Backfill default chart of accounts for any company missing ledger groups
+    // (e.g. companies created via the API before seeding was wired in).
+    const companiesNeedingGroups = await sql`
+      SELECT c.id FROM companies c
+      WHERE NOT EXISTS (SELECT 1 FROM ledger_groups g WHERE g.company_id = c.id)
+    `;
+    for (const c of companiesNeedingGroups) {
+      await seedCompanyDefaults(c.id);
+    }
+
     await sql`
       CREATE TABLE IF NOT EXISTS ca_share_log (
         id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
@@ -322,56 +358,7 @@ export async function GET() {
         RETURNING *
       `;
 
-      const DEFAULT_GROUPS = [
-        { name: 'Capital Account', nature: 'LIABILITIES', alias: 'Capital' },
-        { name: 'Reserves & Surplus', nature: 'LIABILITIES', alias: 'Reserves' },
-        { name: 'Loans (Liability)', nature: 'LIABILITIES', alias: 'Loans' },
-        { name: 'Current Liabilities', nature: 'LIABILITIES', alias: 'CL' },
-        { name: 'Sundry Creditors', nature: 'LIABILITIES', alias: 'Creditors' },
-        { name: 'Duties & Taxes', nature: 'LIABILITIES', alias: 'Duties' },
-        { name: 'Provisions', nature: 'LIABILITIES', alias: 'Provisions' },
-        { name: 'Fixed Assets', nature: 'ASSETS', alias: 'FA' },
-        { name: 'Investments', nature: 'ASSETS', alias: 'Investments' },
-        { name: 'Current Assets', nature: 'ASSETS', alias: 'CA' },
-        { name: 'Cash-in-Hand', nature: 'ASSETS', alias: 'Cash' },
-        { name: 'Bank Accounts', nature: 'ASSETS', alias: 'Bank' },
-        { name: 'Sundry Debtors', nature: 'ASSETS', alias: 'Debtors' },
-        { name: 'Stock-in-Hand', nature: 'ASSETS', alias: 'Stock' },
-        { name: 'Loans & Advances (Asset)', nature: 'ASSETS', alias: 'Loans Asset' },
-        { name: 'Deposits (Asset)', nature: 'ASSETS', alias: 'Deposits' },
-        { name: 'Sales Accounts', nature: 'INCOME', alias: 'Sales' },
-        { name: 'Direct Income', nature: 'INCOME', alias: 'Direct Income' },
-        { name: 'Indirect Income', nature: 'INCOME', alias: 'Indirect Income' },
-        { name: 'Purchase Accounts', nature: 'EXPENSES', alias: 'Purchases' },
-        { name: 'Direct Expenses', nature: 'EXPENSES', alias: 'Direct Exp' },
-        { name: 'Indirect Expenses', nature: 'EXPENSES', alias: 'Indirect Exp' },
-        { name: 'Salary Expenses', nature: 'EXPENSES', alias: 'Salary' },
-      ];
-
-      for (const g of DEFAULT_GROUPS) {
-        await sql`
-          INSERT INTO ledger_groups (company_id, name, alias, nature, is_system)
-          VALUES (${company.id}, ${g.name}, ${g.alias}, ${g.nature}, true)
-          ON CONFLICT DO NOTHING
-        `;
-      }
-
-      const [cashGroup] = await sql`SELECT id FROM ledger_groups WHERE company_id = ${company.id} AND name = 'Cash-in-Hand' LIMIT 1`;
-      if (cashGroup) {
-        await sql`
-          INSERT INTO ledgers (company_id, group_id, name, opening_balance, opening_balance_type, is_system)
-          VALUES (${company.id}, ${cashGroup.id}, 'Cash', 0, 'DEBIT', true)
-          ON CONFLICT DO NOTHING
-        `;
-      }
-      const [bankGroup] = await sql`SELECT id FROM ledger_groups WHERE company_id = ${company.id} AND name = 'Bank Accounts' LIMIT 1`;
-      if (bankGroup) {
-        await sql`
-          INSERT INTO ledgers (company_id, group_id, name, opening_balance, opening_balance_type, is_system)
-          VALUES (${company.id}, ${bankGroup.id}, 'HDFC Bank', 0, 'DEBIT', true)
-          ON CONFLICT DO NOTHING
-        `;
-      }
+      await seedCompanyDefaults(company.id);
 
       console.log('Seeded default user:', user.id);
       seeded = true;

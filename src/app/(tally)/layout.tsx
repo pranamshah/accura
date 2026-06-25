@@ -14,7 +14,8 @@ import type { Company } from '@/types';
 
 export default function TallyLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const { openGoTo, toggleCalculator, toggleDateModal, togglePeriodModal, setCompanies, setActiveCompany, activeCompany } = useTallyStore();
+  const { openGoTo, toggleCalculator, toggleDateModal, togglePeriodModal, setCompanies, setActiveCompany, activeCompany,
+          showGoTo, showCalculator, showDateModal, showPeriodModal, showCompanyModal, closeGoTo, toggleCompanyModal } = useTallyStore();
 
   const { data } = useQuery({
     queryKey: ['companies'],
@@ -24,6 +25,15 @@ export default function TallyLayout({ children }: { children: React.ReactNode })
       return res.json() as Promise<{ companies: Company[] }>;
     },
   });
+
+  useEffect(() => {
+    // Run schema migrations once per session (idempotent — safe to call repeatedly).
+    // This ensures ALTER TABLE migrations in /api/init are applied on first load
+    // without requiring the user to manually hit the endpoint.
+    if (typeof window !== 'undefined' && !sessionStorage.getItem('accura-init-done')) {
+      fetch('/api/init').then(() => sessionStorage.setItem('accura-init-done', '1')).catch(() => {});
+    }
+  }, []);
 
   useEffect(() => {
     if (data?.companies) {
@@ -51,6 +61,14 @@ export default function TallyLayout({ children }: { children: React.ReactNode })
     'alt+i': () => router.push('/ai/smart-entry'),
     'alt+q': () => router.push('/ai/ask'),
     'alt+m': () => router.push('/utilities/share-with-ca'),
+    'escape': () => {
+      if (showGoTo) { closeGoTo(); return; }
+      if (showCalculator) { toggleCalculator(); return; }
+      if (showDateModal) { toggleDateModal(); return; }
+      if (showPeriodModal) { togglePeriodModal(); return; }
+      if (showCompanyModal) { toggleCompanyModal(); return; }
+      router.back();
+    },
   });
 
   return (
