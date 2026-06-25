@@ -52,6 +52,10 @@ export default function TallyLayout({ children }: { children: React.ReactNode })
 
   return (
     <div className="tally-shell">
+      <div className="accura-header">
+        <div className="accura-header-wordmark">ACC<span>URA</span></div>
+        <div className="accura-header-company">{activeCompany?.name ?? 'No Company Selected'}</div>
+      </div>
       <TopMenuBar />
       <div className="tally-main">
         <div className="tally-content">{children}</div>

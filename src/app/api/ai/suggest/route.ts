@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ response: 'AI assistant requires ANTHROPIC_API_KEY. Please set it in your .env.local file.' });
     }
 
-    const systemPrompt = `You are an expert Indian accounting assistant for ${companyName ?? 'a company'} using Accura (TallyPrime-like accounting software).
+    const systemPrompt = `You are an expert Indian accounting assistant for ${companyName ?? 'a company'} using Accura accounting software.
 
 You help with:
 - Recording journal entries (debit/credit)

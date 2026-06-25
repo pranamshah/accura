@@ -3,8 +3,8 @@ import './globals.css';
 import { Providers } from './providers';
 
 export const metadata: Metadata = {
-  title: 'Accura | TallyPrime Gold',
-  description: 'Complete accounting software',
+  title: 'Accura — Professional Accounting',
+  description: 'Accura — Complete accounting software for Indian businesses',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

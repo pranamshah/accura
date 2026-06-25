@@ -36,7 +36,7 @@ export default function TopMenuBar() {
     {
       title: 'Company',
       items: [
-        { label: 'Gateway of Tally', shortcut: 'F3', action: () => router.push('/gateway') },
+        { label: 'Accura Hub', shortcut: 'F3', action: () => router.push('/gateway') },
         { label: 'Alter Company', shortcut: 'Ctrl+Alt+F3', action: () => router.push('/company/configure') },
         { divider: true, label: '' },
         { label: 'Backup', action: () => toast.info('Backup not implemented') },
@@ -99,7 +99,7 @@ export default function TopMenuBar() {
       title: 'Help',
       items: [
         { label: 'Keyboard Shortcuts', action: () => toast.info('Alt+G: Go To, Ctrl+N: Calculator, F2: Date, F3: Home, F4-F9: Vouchers') },
-        { label: 'About Accura', action: () => toast.info('Accura v2.0 — TallyPrime Gold Clone') },
+        { label: 'About Accura', action: () => toast.info('Accura v2.0 — Professional Accounting Software') },
         { label: 'Initialize Database', action: () => router.push('/api/init') },
       ],
     },
@@ -142,9 +142,9 @@ export default function TopMenuBar() {
         <div
           className="tally-top-menu-item"
           onClick={toggleDateModal}
-          style={{ borderLeft: '1px solid #2a2a4a', borderRight: 'none' }}
+          style={{ borderLeft: '1px solid var(--tally-border)', borderRight: 'none' }}
         >
-          <span style={{ color: '#FFD700', fontWeight: 'bold', fontSize: 11 }}>F2</span>
+          <span style={{ color: 'var(--tally-yellow)', fontWeight: 'bold', fontSize: 11 }}>F2</span>
           <span style={{ marginLeft: 4, fontSize: 11 }}>:Date</span>
         </div>
         <div
@@ -152,7 +152,7 @@ export default function TopMenuBar() {
           onClick={() => router.push('/gateway')}
           style={{ borderRight: 'none' }}
         >
-          <span style={{ color: '#FFD700', fontWeight: 'bold', fontSize: 11 }}>F3</span>
+          <span style={{ color: 'var(--tally-yellow)', fontWeight: 'bold', fontSize: 11 }}>F3</span>
           <span style={{ marginLeft: 4, fontSize: 11 }}>:{activeCompany?.name ?? 'Company'}</span>
         </div>
       </div>
