@@ -74,22 +74,35 @@ export default function TallyLayout({ children }: { children: React.ReactNode })
   }, [data]);
 
   useKeyboardShortcuts({
+    // Navigation
     'alt+g': () => openGoTo(),
-    'ctrl+g': () => openGoTo(),
-    'ctrl+n': () => toggleCalculator(),
+    'ctrl+g': () => openGoTo(),           // ⌘G or Ctrl+G
+    'ctrl+f': () => openGoTo(),           // ⌘F SmartFind → GoTo for now
+    // Date / Period
     'f2': () => toggleDateModal(),
     'alt+f2': () => togglePeriodModal(),
+    'ctrl+shift+d': () => togglePeriodModal(), // ⌘⇧D Change Period
+    // Company
     'f3': () => router.push('/gateway'),
+    'ctrl+q': () => router.push('/gateway'), // ⌘Q / Ctrl+Q
+    'ctrl+w': () => router.push('/gateway'), // ⌘W Quit screen
+    // Calculator: ⌘⇧C or Ctrl+N (keep both)
+    'ctrl+n': () => toggleCalculator(),
+    'ctrl+shift+c': () => toggleCalculator(), // ⌘⇧C
+    // Voucher type shortcuts
     'f4': () => router.push('/vouchers/contra'),
     'f5': () => router.push('/vouchers/payment'),
     'f6': () => router.push('/vouchers/receipt'),
     'f7': () => router.push('/vouchers/journal'),
     'f8': () => router.push('/vouchers/sales'),
     'f9': () => router.push('/vouchers/purchase'),
-    'ctrl+q': () => router.push('/gateway'),
+    'ctrl+shift+5': () => router.push('/vouchers/debit-note'),   // ⌘⇧5
+    'ctrl+shift+6': () => router.push('/vouchers/credit-note'),  // ⌘⇧6
+    // AI
     'alt+i': () => router.push('/ai/smart-entry'),
     'alt+q': () => router.push('/ai/ask'),
     'alt+m': () => router.push('/utilities/share-with-ca'),
+    // Escape
     'escape': () => {
       if (showGoTo) { closeGoTo(); return; }
       if (showCalculator) { toggleCalculator(); return; }

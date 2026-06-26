@@ -1,10 +1,11 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useTallyStore } from '@/store/tallyStore';
 import { useQuery } from '@tanstack/react-query';
 import { formatDateISO, formatCurrency, calculateGST } from '@/lib/utils';
 import LedgerCombobox from '@/components/tally/LedgerCombobox';
+import { useEnterToNext } from '@/hooks/useEnterToNext';
 import { toast } from 'sonner';
 import { clickToChatInvoice } from '@/lib/whatsapp';
 import type { Ledger, Item } from '@/types';
@@ -31,13 +32,13 @@ function getParticularsType(type: string): 'DEBIT' | 'CREDIT' {
   return type === 'receipt' ? 'CREDIT' : 'DEBIT';
 }
 
-interface PartRow { id: string; ledger: Ledger | null; amount: string; narration: string; }
+interface PartRow { id: string; ledger: Ledger | null; amount: string; chqRef: string; narration: string; }
 interface DrCrRow { id: string; ledger: Ledger | null; type: 'DEBIT' | 'CREDIT'; amount: string; narration: string; }
 interface InvRow { id: string; itemName: string; qty: string; rate: string; discount: string; amount: number; hsnCode: string; gstRate: string; }
 interface CurBal { amount: number; type: 'Dr' | 'Cr'; }
 
 const uid = () => Math.random().toString(36).slice(2);
-const makePart = (): PartRow => ({ id: uid(), ledger: null, amount: '', narration: '' });
+const makePart = (): PartRow => ({ id: uid(), ledger: null, amount: '', chqRef: '', narration: '' });
 const makeDrCr = (t: 'DEBIT' | 'CREDIT' = 'DEBIT'): DrCrRow => ({ id: uid(), ledger: null, type: t, amount: '', narration: '' });
 const makeInv = (): InvRow => ({ id: uid(), itemName: '', qty: '1', rate: '', discount: '0', amount: 0, hsnCode: '', gstRate: '18' });
 
@@ -135,6 +136,10 @@ export default function VoucherPage() {
 
   const [saving, setSaving] = useState(false);
   const [narrating, setNarrating] = useState(false);
+
+  // Container ref for Enter-to-next-field navigation (Tally behaviour)
+  const formRef = useRef<HTMLDivElement>(null);
+  useEnterToNext(formRef);
 
   // Voucher counter for number
   const { data: voucherCount } = useQuery({
@@ -317,11 +322,12 @@ export default function VoucherPage() {
       invoiceTotal, invoiceRows, useAccountField, parts, accountLedger, accountEntryType, particularsType,
       partsTotal, entries, drTotal, diff, isBalanced, type, isInterState, label, placeOfSupply]);
 
-  // Keyboard shortcuts: ⌘A or Ctrl+A = save; Alt+N = narrate; Y/N on Accept bar
+  // Keyboard shortcuts: ⌘S = Save/Accept (Mac muscle memory); ⌥N = narrate
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       const isMod = e.ctrlKey || e.metaKey;
-      if (isMod && e.key.toLowerCase() === 'a') { e.preventDefault(); handleSave(); return; }
+      // ⌘S (Cmd+S) / Ctrl+S = Accept/Save — matches Mac muscle memory
+      if (isMod && e.key.toLowerCase() === 's' && !e.shiftKey) { e.preventDefault(); handleSave(); return; }
       if (e.altKey && e.key.toLowerCase() === 'n') { e.preventDefault(); handleAutoNarrate(); return; }
       if (e.altKey && e.key.toLowerCase() === 'w' && isInvoice) {
         e.preventDefault();
@@ -366,7 +372,7 @@ export default function VoucherPage() {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', fontFamily: 'Courier New' }}>
+    <div ref={formRef} data-voucher-form style={{ display: 'flex', flexDirection: 'column', height: '100%', fontFamily: 'Courier New' }}>
 
       {/* ── HEADER: voucher name + date ── */}
       <div style={{
@@ -430,6 +436,7 @@ export default function VoucherPage() {
               <thead>
                 <tr>
                   <th style={S.th}>Particulars</th>
+                  <th style={{ ...S.th, width: 110 }}>Chq/Ref No.</th>
                   <th style={S.amtTh}>Debit</th>
                   <th style={S.amtTh}>Credit</th>
                 </tr>
@@ -450,9 +457,18 @@ export default function VoucherPage() {
                       {curBalLine(row.ledger)}
                       {row.ledger && (
                         <div style={{ paddingLeft: 28 }}>
-                          <input value={row.narration} onChange={e => updatePart(i, 'narration', e.target.value)} placeholder="narration…" style={{ ...S.input, fontSize: 10, color: 'var(--tally-text-dim)' }} />
+                          <input value={row.narration} onChange={e => updatePart(i, 'narration', e.target.value)} placeholder="narration…" style={{ ...S.input, fontSize: 10, color: 'var(--tally-text-dim)' }} onFocus={e => e.target.select()} />
                         </div>
                       )}
+                    </td>
+                    <td style={{ ...S.td, width: 110 }}>
+                      <input
+                        value={row.chqRef}
+                        onChange={e => updatePart(i, 'chqRef', e.target.value)}
+                        placeholder="Chq/Ref No."
+                        onFocus={e => e.target.select()}
+                        style={{ ...S.input, fontSize: 11 }}
+                      />
                     </td>
                     <td style={S.amtTd}>
                       {particularsType === 'DEBIT' && <AmountCell value={row.amount} onChange={v => updatePart(i, 'amount', v)} />}
@@ -470,13 +486,14 @@ export default function VoucherPage() {
                       <span style={{ color: 'var(--tally-text-dim)' }}>{accountLedger.name}</span>
                       <span style={{ fontSize: 10, color: 'var(--tally-text-dim)', marginLeft: 6 }}>(auto)</span>
                     </td>
+                    <td style={S.td}></td>
                     <td style={S.amtTd}>{accountEntryType === 'DEBIT' && formatCurrency(partsTotal)}</td>
                     <td style={S.amtTd}>{accountEntryType === 'CREDIT' && formatCurrency(partsTotal)}</td>
                   </tr>
                 )}
                 {/* Total row */}
                 <tr style={{ borderTop: '1px solid var(--tally-border)' }}>
-                  <td style={{ ...S.td, textAlign: 'right', fontWeight: 'bold', color: 'var(--tally-text-dim)', paddingTop: 4 }}>Total</td>
+                  <td colSpan={2} style={{ ...S.td, textAlign: 'right', fontWeight: 'bold', color: 'var(--tally-text-dim)', paddingTop: 4 }}>Total</td>
                   <td style={{ ...S.amtTd, fontWeight: 'bold', color: 'var(--tally-green)', paddingTop: 4 }}>{formatCurrency(partsTotal)}</td>
                   <td style={{ ...S.amtTd, fontWeight: 'bold', color: 'var(--tally-green)', paddingTop: 4 }}>{formatCurrency(partsTotal)}</td>
                 </tr>
@@ -704,7 +721,7 @@ export default function VoucherPage() {
         background: 'var(--tally-bg-panel)', flexShrink: 0,
       }}>
         <div style={{ fontSize: 10, color: 'var(--tally-text-dim)', display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-          <span>⌘A: Save</span>
+          <span>⌘S: Save</span>
           <span>⌥N: Narrate</span>
           {isInvoice && <span>⌥W: WhatsApp</span>}
           {isInvoice && <span>⌘H: Toggle mode</span>}
@@ -718,7 +735,7 @@ export default function VoucherPage() {
           )}
           <span style={{ fontSize: 12, color: 'var(--tally-text-dim)', fontFamily: 'Courier New' }}>Accept ?</span>
           <button className="tally-btn primary" onClick={handleSave} disabled={saving} style={{ minWidth: 72, fontSize: 12 }}>
-            {saving ? '…' : 'Yes  [⌘A]'}
+            {saving ? '…' : 'Yes  [⌘S]'}
           </button>
           <button className="tally-btn" onClick={() => router.back()} style={{ minWidth: 56, fontSize: 12 }}>
             No  [Esc]
