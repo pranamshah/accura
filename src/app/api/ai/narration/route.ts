@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
+import { groqChat, GROQ_MODEL_FAST } from '@/lib/ai';
 
 export async function POST(req: NextRequest) {
   try {
@@ -7,28 +8,18 @@ export async function POST(req: NextRequest) {
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const { voucherType, entries, amount } = await req.json();
-    const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) return NextResponse.json({ narration: 'Being paid/received' });
 
-    const prompt = `Generate a short, professional narration for an Indian accounting voucher:
-Type: ${voucherType}
-Entries: ${JSON.stringify(entries)}
-Amount: ₹${amount}
+    if (!process.env.GROQ_API_KEY) return NextResponse.json({ narration: 'Being paid/received' });
 
-Provide only the narration text, no explanation. Keep it under 100 characters.`;
+    const text = await groqChat(
+      [
+        { role: 'system', content: 'You are an expert Indian accountant. Generate a short professional narration for accounting vouchers in the Indian style. Provide only the narration text, no explanation. Keep it under 100 characters.' },
+        { role: 'user', content: `Generate a short, professional narration for an Indian accounting voucher:\nType: ${voucherType}\nEntries: ${JSON.stringify(entries)}\nAmount: ₹${amount}` },
+      ],
+      { model: GROQ_MODEL_FAST, maxTokens: 100 }
+    );
 
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-      body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 100,
-        messages: [{ role: 'user', content: prompt }],
-      }),
-    });
-
-    const data = await res.json();
-    return NextResponse.json({ narration: data.content?.[0]?.text ?? 'Being paid/received' });
+    return NextResponse.json({ narration: text.trim() || 'Being paid/received' });
   } catch {
     return NextResponse.json({ narration: 'Transaction narration' });
   }

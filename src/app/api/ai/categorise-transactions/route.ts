@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import sql from '@/lib/db';
+import { groqChat, GROQ_MODEL } from '@/lib/ai';
 
 function parseJSON(text: string) {
   const clean = text.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
@@ -18,8 +19,7 @@ export async function POST(req: NextRequest) {
     const ledgerRows = await sql`SELECT id, name, nature, parent FROM ledgers WHERE company_id=${companyId} ORDER BY name`;
     const ledgerList = ledgerRows.map((l: { name: string; nature: string }) => `${l.name}(${l.nature})`).join(', ');
 
-    const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) {
+    if (!process.env.GROQ_API_KEY) {
       // Fallback: return rows with empty suggestions
       const fallback = rows.map((r: Record<string, unknown>, i: number) => ({
         rowIndex: i,
@@ -32,22 +32,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ suggestions: fallback });
     }
 
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 4096,
-        system: `You are an Indian accountant processing a bank statement. For each transaction, decide: voucherType (RECEIPT for deposits, PAYMENT for withdrawals, CONTRA if transfer between own accounts), the most likely counter-ledger name from the provided company ledger list (match party names especially; only suggest new ledger if nothing fits), and a 'Being ...' narration. Recognise Indian bank patterns: UPI, NEFT, RTGS, IMPS, ACH, EMI, bank charges, interest, salary. Respond ONLY with a valid JSON array matching schema: [{"rowIndex":number,"voucherType":"PAYMENT|RECEIPT|CONTRA","suggestedLedger":"string","narration":"string","confidence":0.0-1.0,"matchedExisting":boolean}]`,
-        messages: [{
-          role: 'user',
-          content: `Company ledgers: ${ledgerList}\n\nTransactions to categorise:\n${JSON.stringify(rows.slice(0, 100), null, 2)}`,
-        }],
-      }),
-    });
+    const text = await groqChat(
+      [
+        { role: 'system', content: `You are an Indian accountant processing a bank statement. For each transaction, decide: voucherType (RECEIPT for deposits, PAYMENT for withdrawals, CONTRA if transfer between own accounts), the most likely counter-ledger name from the provided company ledger list (match party names especially; only suggest new ledger if nothing fits), and a 'Being ...' narration. Recognise Indian bank patterns: UPI, NEFT, RTGS, IMPS, ACH, EMI, bank charges, interest, salary. Respond ONLY with a valid JSON array matching schema: [{"rowIndex":number,"voucherType":"PAYMENT|RECEIPT|CONTRA","suggestedLedger":"string","narration":"string","confidence":0.0-1.0,"matchedExisting":boolean}]` },
+        { role: 'user', content: `Company ledgers: ${ledgerList}\n\nTransactions to categorise:\n${JSON.stringify(rows.slice(0, 100), null, 2)}` },
+      ],
+      { model: GROQ_MODEL, maxTokens: 4096 }
+    );
 
-    const data = await res.json();
-    const text = data.content?.[0]?.text ?? '[]';
     let suggestions;
     try {
       suggestions = parseJSON(text);

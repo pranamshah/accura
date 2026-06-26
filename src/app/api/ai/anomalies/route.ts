@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import sql from '@/lib/db';
+import { groqChat } from '@/lib/ai';
 
 function parseJSON(text: string) {
   const clean = text.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
@@ -127,27 +128,21 @@ export async function POST(req: NextRequest) {
     const ruleAnomalies = runRuleChecks(vouchers);
 
     let aiAnomalies: Anomaly[] = [];
-    const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (apiKey && vouchers.length > 0) {
+    if (process.env.GROQ_API_KEY && vouchers.length > 0) {
       try {
         const voucherSummary = vouchers.slice(0, 50).map((v) => ({
           no: v.number, type: v.type, date: v.date, amount: v.total_amount, narration: v.narration,
           ledgers: v.entries.map((e) => `${e.ledger_name}(${e.type[0]}:${e.amount})`).join(','),
         }));
 
-        const res = await fetch('https://api.anthropic.com/v1/messages', {
-          method: 'POST',
-          headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-          body: JSON.stringify({
-            model: 'claude-sonnet-4-6',
-            max_tokens: 2048,
-            system: `You are an internal auditor reviewing Indian accounting entries. Identify anomalies: unusual amounts vs pattern for that party/ledger, misclassified accounts, narrations contradicting the entry, Sec 40A(3) cash violations, suspicious patterns. For each, give the voucher reference, a one-line issue, severity (HIGH/MEDIUM/LOW), and a suggested fix. Respond ONLY with a valid JSON array: [{"voucherNo":"","date":"","issue":"","severity":"HIGH|MEDIUM|LOW","suggestedFix":""}]`,
-            messages: [{ role: 'user', content: `Vouchers to audit:\n${JSON.stringify(voucherSummary, null, 2)}` }],
-          }),
-        });
+        const text = await groqChat(
+          [
+            { role: 'system', content: `You are an internal auditor reviewing Indian accounting entries. Identify anomalies: unusual amounts vs pattern for that party/ledger, misclassified accounts, narrations contradicting the entry, Sec 40A(3) cash violations, suspicious patterns. For each, give the voucher reference, a one-line issue, severity (HIGH/MEDIUM/LOW), and a suggested fix. Respond ONLY with a valid JSON array: [{"voucherNo":"","date":"","issue":"","severity":"HIGH|MEDIUM|LOW","suggestedFix":""}]` },
+            { role: 'user', content: `Vouchers to audit:\n${JSON.stringify(voucherSummary, null, 2)}` },
+          ],
+          { maxTokens: 2048 }
+        );
 
-        const data = await res.json();
-        const text = data.content?.[0]?.text ?? '[]';
         aiAnomalies = parseJSON(text) as Anomaly[];
         aiAnomalies = aiAnomalies.map((a) => ({ ...a, source: 'AI' } as Anomaly));
       } catch {

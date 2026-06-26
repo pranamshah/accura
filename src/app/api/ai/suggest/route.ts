@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
+import { groqChat } from '@/lib/ai';
 
 export async function POST(req: NextRequest) {
   try {
@@ -9,9 +10,8 @@ export async function POST(req: NextRequest) {
     const { message, companyName, context } = await req.json();
     if (!message) return NextResponse.json({ error: 'Message required' }, { status: 400 });
 
-    const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) {
-      return NextResponse.json({ response: 'AI assistant requires ANTHROPIC_API_KEY. Please set it in your .env.local file.' });
+    if (!process.env.GROQ_API_KEY) {
+      return NextResponse.json({ response: 'AI assistant requires GROQ_API_KEY. Please set it in your .env.local file.' });
     }
 
     const systemPrompt = `You are an expert Indian accounting assistant for ${companyName ?? 'a company'} using Accura accounting software.
@@ -30,35 +30,18 @@ Account Name | Dr/Cr | Amount
 Always mention which accounts to debit and credit.
 Keep responses concise and practical.`;
 
-    const messages = [
-      ...(context ?? []).map((m: { role: string; content: string }) => ({ role: m.role, content: m.content })),
+    const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
+      { role: 'system', content: systemPrompt },
+      ...(context ?? []).map((m: { role: string; content: string }) => ({
+        role: m.role as 'user' | 'assistant',
+        content: m.content,
+      })),
       { role: 'user', content: message },
     ];
 
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 1024,
-        system: systemPrompt,
-        messages,
-      }),
-    });
+    const response = await groqChat(messages, { maxTokens: 1024 });
 
-    if (!res.ok) {
-      const err = await res.json();
-      console.error('Anthropic API error:', err);
-      return NextResponse.json({ error: 'AI service error' }, { status: 502 });
-    }
-
-    const data = await res.json();
-    const response = data.content?.[0]?.text ?? 'No response from AI';
-    return NextResponse.json({ response });
+    return NextResponse.json({ response: response || 'No response from AI' });
   } catch (err) {
     console.error(err);
     return NextResponse.json({ error: String(err) }, { status: 500 });

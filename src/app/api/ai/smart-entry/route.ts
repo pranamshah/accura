@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import sql from '@/lib/db';
+import { groqChat } from '@/lib/ai';
 
 function parseJSON(text: string) {
   const clean = text.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
@@ -18,8 +19,7 @@ export async function POST(req: NextRequest) {
     const ledgerRows = await sql`SELECT name, nature, parent FROM ledgers WHERE company_id = ${companyId} ORDER BY name`;
     const ledgerList = ledgerRows.map((l: { name: string; nature: string; parent: string }) => `${l.name} (${l.nature})`).join(', ');
 
-    const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) {
+    if (!process.env.GROQ_API_KEY) {
       return NextResponse.json({ error: 'AI unavailable' }, { status: 503 });
     }
 
@@ -44,23 +44,14 @@ Today's date: ${currentDate || new Date().toISOString().slice(0, 10)}
 
 Transaction: ${message}`;
 
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 1024,
-        system: systemPrompt,
-        messages: [{ role: 'user', content: userMsg }],
-      }),
-    });
+    const text = await groqChat(
+      [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userMsg },
+      ],
+      { maxTokens: 1024, jsonMode: true }
+    );
 
-    const data = await res.json();
-    const text = data.content?.[0]?.text ?? '{}';
     const result = parseJSON(text);
     return NextResponse.json(result);
   } catch (err) {

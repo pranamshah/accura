@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import sql from '@/lib/db';
+import { groqChat } from '@/lib/ai';
 
 function parseJSON(text: string) {
   const clean = text.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
@@ -78,9 +79,8 @@ export async function POST(req: NextRequest) {
     const { question, companyId, currentDate, fyStart } = await req.json();
     if (!question || !companyId) return NextResponse.json({ error: 'question and companyId required' }, { status: 400 });
 
-    const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) {
-      return NextResponse.json({ intent: 'UNKNOWN', answerText: 'AI unavailable — ANTHROPIC_API_KEY not set', reportPath: null, data: null });
+    if (!process.env.GROQ_API_KEY) {
+      return NextResponse.json({ intent: 'UNKNOWN', answerText: 'AI unavailable — GROQ_API_KEY not set', reportPath: null, data: null });
     }
 
     const systemPrompt = `You translate a business owner's plain-English question about their accounts into one of the supported report intents and parameters. You do NOT have database access — you only choose an intent from the provided list and extract parameters. Resolve relative dates against the provided current date and financial year. Respond ONLY with valid JSON.
@@ -89,23 +89,14 @@ Supported intents: CASH_BALANCE, BANK_BALANCE, OUTSTANDING_RECEIVABLES, OUTSTAND
 
 Schema: { "intent": string, "params": { "from": "YYYY-MM-DD", "to": "YYYY-MM-DD", "limit": number, "ledger": string }, "answerText": string, "reportPath": string }`;
 
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 512,
-        system: systemPrompt,
-        messages: [{ role: 'user', content: `Current date: ${currentDate || new Date().toISOString().slice(0, 10)}\nFinancial year start: ${fyStart || 'April'}\n\nQuestion: ${question}` }],
-      }),
-    });
+    const text = await groqChat(
+      [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: `Current date: ${currentDate || new Date().toISOString().slice(0, 10)}\nFinancial year start: ${fyStart || 'April'}\n\nQuestion: ${question}` },
+      ],
+      { maxTokens: 512, jsonMode: true }
+    );
 
-    const aiData = await res.json();
-    const text = aiData.content?.[0]?.text ?? '{}';
     let parsed: Record<string, unknown>;
     try {
       parsed = parseJSON(text);

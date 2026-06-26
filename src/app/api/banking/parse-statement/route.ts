@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
+import { groqChat, GROQ_MODEL } from '@/lib/ai';
 
 function parseJSON(text: string) {
   const clean = text.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
@@ -108,33 +109,35 @@ export async function POST(req: NextRequest) {
       const text = await file.text();
       rows = parseCSV(text);
     } else if (fileName.endsWith('.pdf')) {
-      const apiKey = process.env.ANTHROPIC_API_KEY;
-      if (!apiKey) return NextResponse.json({ error: 'PDF parsing requires ANTHROPIC_API_KEY' }, { status: 503 });
+      if (!process.env.GROQ_API_KEY) {
+        return NextResponse.json({ error: 'PDF parsing requires GROQ_API_KEY' }, { status: 503 });
+      }
 
-      const buffer = await file.arrayBuffer();
-      const base64 = Buffer.from(buffer).toString('base64');
-
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-6',
-          max_tokens: 4096,
-          system: `Extract all bank statement transactions from this PDF into a JSON array. Each item must have: { "date": "DD/MM/YYYY or YYYY-MM-DD", "description": "string", "refNo": "string or empty", "withdrawal": number_or_0, "deposit": number_or_0, "balance": number_or_0 }. Numbers must be plain numbers without commas or currency symbols. Respond ONLY with a valid JSON array, no markdown.`,
-          messages: [{
-            role: 'user',
-            content: [
-              { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } },
-              { type: 'text', text: 'Extract all transactions from this bank statement as a JSON array.' },
-            ],
-          }],
-        }),
-      });
-
-      const data = await res.json();
-      if (!res.ok) return NextResponse.json({ error: data.error?.message || 'PDF parsing failed' }, { status: 502 });
-      const text = data.content?.[0]?.text ?? '[]';
+      // Extract text from PDF using pdf-parse, then send to Groq
+      let pdfText = '';
       try {
+        const buffer = await file.arrayBuffer();
+        const pdfParseModule = await import('pdf-parse');
+        const pdfParse = (pdfParseModule as unknown as { default: (buf: Buffer) => Promise<{ text: string }> }).default ?? (pdfParseModule as unknown as (buf: Buffer) => Promise<{ text: string }>);
+        const pdfData = await pdfParse(Buffer.from(buffer));
+        pdfText = pdfData.text;
+      } catch {
+        return NextResponse.json({ error: 'Could not extract text from PDF. Please download your statement as CSV from your bank\'s portal.' }, { status: 422 });
+      }
+
+      if (!pdfText || pdfText.trim().length < 50) {
+        return NextResponse.json({ error: 'Could not extract text from PDF. Please download your statement as CSV from your bank\'s portal.' }, { status: 422 });
+      }
+
+      try {
+        const text = await groqChat(
+          [
+            { role: 'system', content: `Extract all bank statement transactions from this text into a JSON array. Each item must have: { "date": "DD/MM/YYYY or YYYY-MM-DD", "description": "string", "refNo": "string or empty", "withdrawal": number_or_0, "deposit": number_or_0, "balance": number_or_0 }. Numbers must be plain numbers without commas or currency symbols. Respond ONLY with a valid JSON array, no markdown.` },
+            { role: 'user', content: `Extract all transactions from this bank statement:\n\n${pdfText.slice(0, 8000)}` },
+          ],
+          { model: GROQ_MODEL, maxTokens: 4096 }
+        );
+
         rows = parseJSON(text) as StatementRow[];
       } catch {
         return NextResponse.json({ error: 'Could not parse PDF statement. Try CSV format.' }, { status: 422 });
