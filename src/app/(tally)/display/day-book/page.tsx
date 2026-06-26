@@ -69,7 +69,11 @@ export default function DayBookPage() {
           </thead>
           <tbody>
             {vouchers.map((v) => (
-              <tr key={v.id} onClick={() => router.push(`/vouchers/${v.type.toLowerCase().replace('_', '-')}`)}>
+              <tr key={v.id}
+                style={{ cursor: 'pointer' }}
+                onClick={() => router.push(`/vouchers/${v.type.toLowerCase().replace(/_/g, '-')}?id=${v.id}`)}
+                title="Click to edit this voucher"
+              >
                 <td>{formatDate(v.date)}</td>
                 <td style={{ color: '#FFD700' }}>{v.number}</td>
                 <td style={{ color: '#00BFFF' }}>{v.type}</td>

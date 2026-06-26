@@ -33,6 +33,8 @@ const SECTIONS: { title: string; items: { key: string; label: string; path: stri
       { key: 'X', label: 'Export to CA', path: '/utilities/share-with-ca' },
       { key: 'K', label: 'Ask Accura (AI)', path: '/ai/ask' },
       { key: 'Z', label: 'Anomaly Scanner', path: '/display/anomaly-scanner' },
+      { key: 'F', label: 'F11: Features', path: '/company/features' },
+      { key: 'C', label: 'F12: Configure', path: '/company/configure' },
     ],
   },
   {
@@ -44,6 +46,12 @@ const SECTIONS: { title: string; items: { key: string; label: string; path: stri
       { key: 'W', label: 'Balance Sheet', path: '/display/balance-sheet' },
       { key: 'H', label: 'Stock Summary', path: '/display/stock-summary' },
       { key: 'R', label: 'GST Reports', path: '/display/gst/gstr1' },
+      { key: 'O', label: 'Outstanding', path: '/display/outstanding/receivables' },
+      { key: 'J', label: 'Ledger', path: '/display/ledger' },
+      { key: 'U', label: 'Cash Book', path: '/display/cash-book' },
+      { key: 'M', label: 'Bank Book', path: '/display/bank-book' },
+      { key: 'Q', label: 'Sales Register', path: '/display/sales-register' },
+      { key: 'Y', label: 'Purchase Register', path: '/display/purchase-register' },
     ],
   },
 ];

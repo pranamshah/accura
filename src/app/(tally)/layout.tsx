@@ -98,6 +98,12 @@ export default function TallyLayout({ children }: { children: React.ReactNode })
     'f9': () => router.push('/vouchers/purchase'),
     'ctrl+shift+5': () => router.push('/vouchers/debit-note'),   // ⌘⇧5
     'ctrl+shift+6': () => router.push('/vouchers/credit-note'),  // ⌘⇧6
+    // Reports
+    'f11': () => router.push('/company/features'),  // F11 Company Features
+    'f12': () => router.push('/company/configure'), // F12 Configure
+    // Display (reports) shortcuts
+    'ctrl+d': () => router.push('/display/day-book'),       // ⌘D Day Book
+    'ctrl+b': () => router.push('/display/trial-balance'),  // ⌘B Trial Balance
     // AI
     'alt+i': () => router.push('/ai/smart-entry'),
     'alt+q': () => router.push('/ai/ask'),

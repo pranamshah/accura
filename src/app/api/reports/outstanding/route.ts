@@ -6,13 +6,43 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const companyId = searchParams.get('companyId');
   const type = searchParams.get('type'); // 'receivable' or 'payable'
+  const ledgerId = searchParams.get('ledgerId'); // single-ledger bill-wise lookup
   const asOf = searchParams.get('asOf') || new Date().toISOString().split('T')[0];
+
   try {
     const session = await getSession();
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     if (!companyId) return NextResponse.json({ error: 'companyId required' }, { status: 400 });
 
-    // Debtors = receivable, Creditors = payable
+    // ── SINGLE-LEDGER mode: for bill-wise allocation popup in voucher entry ──
+    if (ledgerId) {
+      const vouchers = await sql`
+        SELECT v.number AS voucher_number, v.date, v.type,
+               SUM(CASE WHEN ve.type = 'DEBIT' THEN ve.amount ELSE 0 END) AS debit_total,
+               SUM(CASE WHEN ve.type = 'CREDIT' THEN ve.amount ELSE 0 END) AS credit_total
+        FROM vouchers v
+        JOIN voucher_entries ve ON ve.voucher_id = v.id
+        WHERE ve.ledger_id = ${ledgerId}
+          AND v.company_id = ${companyId}
+          AND v.status != 'CANCELLED'
+          AND v.date <= ${asOf}
+        GROUP BY v.id, v.number, v.date, v.type
+        ORDER BY v.date DESC
+        LIMIT 50
+      `;
+
+      const bills = vouchers.map(v => ({
+        voucherNumber: v.voucher_number,
+        date: String(v.date).split('T')[0],
+        type: v.type,
+        amount: parseFloat(v.debit_total) || parseFloat(v.credit_total),
+        pending: parseFloat(v.debit_total) || parseFloat(v.credit_total), // simplified: full amount
+      }));
+
+      return NextResponse.json({ bills });
+    }
+
+    // ── ALL-LEDGERS mode: receivables / payables report ──
     const groupName = type === 'receivable' ? 'Sundry Debtors' : 'Sundry Creditors';
 
     const ledgers = await sql`
@@ -27,7 +57,7 @@ export async function GET(req: NextRequest) {
 
     for (const ledger of ledgers) {
       const entries = await sql`
-        SELECT ve.amount, ve.type, ve.bill_ref, ve.bill_date, v.date
+        SELECT ve.amount, ve.type, ve.bill_ref, ve.bill_date, v.date, v.number
         FROM voucher_entries ve
         JOIN vouchers v ON v.id = ve.voucher_id
         WHERE ve.ledger_id = ${ledger.id} AND v.status != 'CANCELLED' AND v.date <= ${asOf}
@@ -45,6 +75,7 @@ export async function GET(req: NextRequest) {
           .filter((e) => e.bill_ref)
           .map((e) => ({
             billRef: e.bill_ref,
+            voucherNumber: e.number,
             billDate: e.bill_date,
             amount: parseFloat(e.amount),
             ageDays: Math.floor((new Date(asOf).getTime() - new Date(e.date).getTime()) / 86400000),

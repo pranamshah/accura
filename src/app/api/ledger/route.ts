@@ -53,7 +53,13 @@ export async function POST(req: NextRequest) {
       )
       RETURNING *
     `;
-    return NextResponse.json({ ledger: transformRow(row) }, { status: 201 });
+    // Fetch group info so the returned ledger has group.name for bill-wise detection
+    const [grp] = await sql`SELECT id, name, nature FROM ledger_groups WHERE id = ${row.group_id} LIMIT 1`;
+    const ledger = {
+      ...transformRow(row),
+      group: grp ? { id: grp.id, name: grp.name, nature: grp.nature } : undefined,
+    };
+    return NextResponse.json({ ledger }, { status: 201 });
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 });
   }

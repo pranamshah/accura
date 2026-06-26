@@ -2,6 +2,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTallyStore } from '@/store/tallyStore';
+import CreateMasterModal from './CreateMasterModal';
 import type { Ledger } from '@/types';
 
 // Selector used by useEnterToNext to find all focusable fields
@@ -19,11 +20,12 @@ interface Props {
 
 export default function LedgerCombobox({ value, onChange, placeholder = 'Select Ledger' }: Props) {
   const { activeCompany } = useTallyStore();
-  const [query, setQuery] = useState(value || '');
-  const [open, setOpen] = useState(false);
+  const [query, setQuery]     = useState(value || '');
+  const [open, setOpen]       = useState(false);
   const [activeIdx, setActiveIdx] = useState(0);
+  const [showCreate, setShowCreate] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-  const dropRef = useRef<HTMLDivElement>(null);
+  const dropRef  = useRef<HTMLDivElement>(null);
 
   const { data } = useQuery<{ ledgers: Ledger[] }>({
     queryKey: ['ledgers', activeCompany?.id],
@@ -79,7 +81,7 @@ export default function LedgerCombobox({ value, onChange, placeholder = 'Select 
 
   function handleKeyDown(e: React.KeyboardEvent) {
     if (e.key === 'ArrowDown') { e.preventDefault(); setActiveIdx(i => Math.min(i + 1, filtered.length - 1)); return; }
-    if (e.key === 'ArrowUp') { e.preventDefault(); setActiveIdx(i => Math.max(i - 1, 0)); return; }
+    if (e.key === 'ArrowUp')   { e.preventDefault(); setActiveIdx(i => Math.max(i - 1, 0)); return; }
 
     if (e.key === 'Enter') {
       e.preventDefault();
@@ -103,66 +105,91 @@ export default function LedgerCombobox({ value, onChange, placeholder = 'Select 
       return;
     }
 
+    // ⌥C — open Create Master modal inline
+    if (e.altKey && e.key.toLowerCase() === 'c') {
+      e.preventDefault();
+      e.stopPropagation();
+      setOpen(false);
+      setShowCreate(true);
+      return;
+    }
+
     if (e.key === 'Escape') { setOpen(false); return; }
   }
 
+  function handleCreated(newLedger: Ledger) {
+    setShowCreate(false);
+    select(newLedger);
+    setTimeout(moveToNextField, 80);
+    // Refocus the input briefly so it shows the new ledger name
+    setTimeout(() => inputRef.current?.blur(), 100);
+  }
+
   return (
-    <div className="ledger-combo-wrap">
-      <input
-        ref={inputRef}
-        value={query}
-        onChange={e => { setQuery(e.target.value); setOpen(true); setActiveIdx(0); }}
-        onFocus={e => { setOpen(true); e.target.select(); }}
-        onKeyDown={handleKeyDown}
-        placeholder={placeholder}
-        style={{
-          background: 'transparent',
-          border: 'none',
-          borderBottom: '1px solid var(--tally-border)',
-          color: '#e8e8e8',
-          fontFamily: "'JetBrains Mono', 'Courier New', monospace",
-          fontSize: 12,
-          outline: 'none',
-          width: '100%',
-          padding: '1px 4px',
-        }}
-        onFocusCapture={e => {
-          e.target.style.borderBottomColor = 'var(--tally-yellow)';
-          e.target.style.background = 'rgba(0,61,153,0.15)';
-        }}
-        onBlurCapture={e => {
-          e.target.style.borderBottomColor = 'var(--tally-border)';
-          e.target.style.background = 'transparent';
-          // If user typed something that doesn't match any ledger, clear it
-          const match = allLedgers.find(l => l.name.toLowerCase() === query.toLowerCase());
-          if (!match && query && !filtered.length) {
-            // leave it — user may be typing still
-          }
-        }}
-      />
-      {open && (
-        <div className="ledger-combo-dropdown" ref={dropRef}>
-          {filtered.length === 0 && (
-            <div className="ledger-combo-item" style={{ color: '#a0a0a0' }}>
-              No ledgers found. ⌥C to create.
-            </div>
-          )}
-          {filtered.slice(0, 50).map((l, i) => (
+    <>
+      <div className="ledger-combo-wrap">
+        <input
+          ref={inputRef}
+          value={query}
+          onChange={e => { setQuery(e.target.value); setOpen(true); setActiveIdx(0); }}
+          onFocus={e => { setOpen(true); e.target.select(); }}
+          onKeyDown={handleKeyDown}
+          placeholder={placeholder}
+          style={{
+            background: 'transparent',
+            border: 'none',
+            borderBottom: '1px solid var(--tally-border)',
+            color: '#e8e8e8',
+            fontFamily: "'JetBrains Mono', 'Courier New', monospace",
+            fontSize: 12,
+            outline: 'none',
+            width: '100%',
+            padding: '1px 4px',
+          }}
+          onFocusCapture={e => {
+            e.target.style.borderBottomColor = 'var(--tally-yellow)';
+            e.target.style.background = 'rgba(0,61,153,0.15)';
+          }}
+          onBlurCapture={e => {
+            e.target.style.borderBottomColor = 'var(--tally-border)';
+            e.target.style.background = 'transparent';
+          }}
+        />
+        {open && (
+          <div className="ledger-combo-dropdown" ref={dropRef}>
+            {filtered.length === 0 && (
+              <div className="ledger-combo-item" style={{ color: '#a0a0a0' }}>
+                No ledgers found. Press ⌥C to create &ldquo;{query}&rdquo;.
+              </div>
+            )}
+            {filtered.slice(0, 50).map((l, i) => (
+              <div
+                key={l.id}
+                className={`ledger-combo-item${i === activeIdx ? ' selected' : ''}`}
+                onClick={() => { select(l); setTimeout(moveToNextField, 0); }}
+                onMouseEnter={() => setActiveIdx(i)}
+              >
+                <span>{l.name}</span>
+                <span className="group">{l.group?.name ?? ''}</span>
+              </div>
+            ))}
             <div
-              key={l.id}
-              className={`ledger-combo-item${i === activeIdx ? ' selected' : ''}`}
-              onClick={() => { select(l); setTimeout(moveToNextField, 0); }}
-              onMouseEnter={() => setActiveIdx(i)}
+              style={{ padding: '3px 8px', fontSize: 10, color: '#a0a0a0', borderTop: '1px solid var(--tally-border)', cursor: 'pointer' }}
+              onClick={() => { setOpen(false); setShowCreate(true); }}
             >
-              <span>{l.name}</span>
-              <span className="group">{l.group?.name ?? ''}</span>
+              ⌥C: Create New Ledger{query ? ` "${query}"` : ''}
             </div>
-          ))}
-          <div style={{ padding: '3px 8px', fontSize: 10, color: '#a0a0a0', borderTop: '1px solid var(--tally-border)' }}>
-            ⌥C: Create New Ledger
           </div>
-        </div>
-      )}
-    </div>
+        )}
+      </div>
+
+      {/* Inline Create Master modal — appears over the voucher form */}
+      <CreateMasterModal
+        open={showCreate}
+        initialName={query}
+        onClose={() => { setShowCreate(false); setTimeout(() => inputRef.current?.focus(), 50); }}
+        onCreated={handleCreated}
+      />
+    </>
   );
 }

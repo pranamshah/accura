@@ -1,14 +1,18 @@
 'use client';
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useTallyStore } from '@/store/tallyStore';
 import { useQuery } from '@tanstack/react-query';
 import { formatDateISO, formatCurrency, calculateGST } from '@/lib/utils';
 import LedgerCombobox from '@/components/tally/LedgerCombobox';
+import BillWiseModal, { type BillAllocation } from '@/components/tally/BillWiseModal';
 import { useEnterToNext } from '@/hooks/useEnterToNext';
 import { toast } from 'sonner';
 import { clickToChatInvoice } from '@/lib/whatsapp';
 import type { Ledger, Item } from '@/types';
+
+// Groups that require bill-by-bill tracking
+const BILL_WISE_GROUPS = new Set(['Sundry Debtors', 'Sundry Creditors']);
 
 const VOUCHER_LABELS: Record<string, string> = {
   contra: 'Contra', payment: 'Payment', receipt: 'Receipt', journal: 'Journal',
@@ -32,8 +36,8 @@ function getParticularsType(type: string): 'DEBIT' | 'CREDIT' {
   return type === 'receipt' ? 'CREDIT' : 'DEBIT';
 }
 
-interface PartRow { id: string; ledger: Ledger | null; amount: string; chqRef: string; narration: string; }
-interface DrCrRow { id: string; ledger: Ledger | null; type: 'DEBIT' | 'CREDIT'; amount: string; narration: string; }
+interface PartRow { id: string; ledger: Ledger | null; amount: string; chqRef: string; narration: string; billAlloc?: BillAllocation; }
+interface DrCrRow { id: string; ledger: Ledger | null; type: 'DEBIT' | 'CREDIT'; amount: string; narration: string; billAlloc?: BillAllocation; }
 interface InvRow { id: string; itemName: string; qty: string; rate: string; discount: string; amount: number; hsnCode: string; gstRate: string; }
 interface CurBal { amount: number; type: 'Dr' | 'Cr'; }
 
@@ -98,6 +102,8 @@ function AmountCell({ value, onChange, style }: { value: string; onChange: (v: s
 export default function VoucherPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const editId = searchParams.get('id'); // if set, we're editing an existing voucher
   const type = params.type as string;
   const { activeCompany, currentDate } = useTallyStore();
 
@@ -137,6 +143,15 @@ export default function VoucherPage() {
   const [saving, setSaving] = useState(false);
   const [narrating, setNarrating] = useState(false);
 
+  // Bill-wise allocation popup
+  const [billWise, setBillWise] = useState<{
+    open: boolean;
+    rowType: 'part' | 'entry';
+    rowIdx: number;
+    ledger: Ledger | null;
+    amount: number;
+  }>({ open: false, rowType: 'part', rowIdx: 0, ledger: null, amount: 0 });
+
   // Container ref for Enter-to-next-field navigation (Tally behaviour)
   const formRef = useRef<HTMLDivElement>(null);
   useEnterToNext(formRef);
@@ -152,7 +167,43 @@ export default function VoucherPage() {
     enabled: !!activeCompany,
   });
 
-  const voucherNumber = `${label.slice(0, 3).toUpperCase()}-${(voucherCount?.count ?? 0) + 1}`;
+  const voucherNumber = editId ? '' : `${label.slice(0, 3).toUpperCase()}-${(voucherCount?.count ?? 0) + 1}`;
+
+  // Edit mode: fetch existing voucher data
+  const { data: editData } = useQuery({
+    queryKey: ['voucher-edit', editId],
+    queryFn: async () => {
+      if (!editId) return null;
+      const r = await fetch(`/api/vouchers/${editId}`);
+      return r.json() as Promise<{ voucher: Record<string, unknown> & { entries: Array<{ ledgerId: string; ledgerName: string; type: string; amount: number; narration?: string }>; number: string; date: string; narration?: string; reference?: string; partyLedgerId?: string } }>;
+    },
+    enabled: !!editId,
+  });
+
+  // Pre-fill form from edit data
+  useEffect(() => {
+    if (!editData?.voucher) return;
+    const v = editData.voucher;
+    setDate(String(v.date).split('T')[0]);
+    setNarration(String(v.narration ?? ''));
+    setReference(String(v.reference ?? ''));
+    // For account-field types, first entry is account, rest are particulars
+    if (useAccountField && v.entries.length > 0) {
+      const [acctEntry, ...partEntries] = v.entries;
+      // We need a Ledger object — create a minimal one from the entry
+      setAccountLedger({ id: acctEntry.ledgerId, name: acctEntry.ledgerName } as Ledger);
+      setParts(partEntries.map(e => ({
+        id: uid(), ledger: { id: e.ledgerId, name: e.ledgerName } as Ledger,
+        amount: String(e.amount), chqRef: '', narration: e.narration ?? '',
+      })));
+    } else if (!isInvoice && v.entries.length > 0) {
+      setEntries(v.entries.map(e => ({
+        id: uid(), ledger: { id: e.ledgerId, name: e.ledgerName } as Ledger,
+        type: e.type as 'DEBIT' | 'CREDIT', amount: String(e.amount), narration: e.narration ?? '',
+      })));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editData]);
 
   // Items for invoice
   const { data: itemsData } = useQuery<{ items: Item[] }>({
@@ -184,7 +235,15 @@ export default function VoucherPage() {
   function updatePart(i: number, field: keyof PartRow, v: unknown) {
     setParts(rows => rows.map((r, idx) => {
       if (idx !== i) return r;
-      if (field === 'ledger' && v) fetchCurBal(v as Ledger);
+      if (field === 'ledger' && v) {
+        const l = v as Ledger;
+        fetchCurBal(l);
+        // Trigger bill-wise popup for Sundry Debtors/Creditors
+        const groupName = l.group?.name ?? '';
+        if (BILL_WISE_GROUPS.has(groupName)) {
+          setTimeout(() => setBillWise({ open: true, rowType: 'part', rowIdx: i, ledger: l, amount: parseFloat(r.amount) || 0 }), 120);
+        }
+      }
       return { ...r, [field]: v };
     }));
   }
@@ -192,7 +251,15 @@ export default function VoucherPage() {
   function updateEntry(i: number, field: keyof DrCrRow, v: unknown) {
     setEntries(rows => rows.map((r, idx) => {
       if (idx !== i) return r;
-      if (field === 'ledger' && v) fetchCurBal(v as Ledger);
+      if (field === 'ledger' && v) {
+        const l = v as Ledger;
+        fetchCurBal(l);
+        // Trigger bill-wise popup for Sundry Debtors/Creditors
+        const groupName = l.group?.name ?? '';
+        if (BILL_WISE_GROUPS.has(groupName)) {
+          setTimeout(() => setBillWise({ open: true, rowType: 'entry', rowIdx: i, ledger: l, amount: parseFloat(r.amount) || 0 }), 120);
+        }
+      }
       return { ...r, [field]: v };
     }));
   }
@@ -307,12 +374,15 @@ export default function VoucherPage() {
         body.entries = validEntries.map(e => ({ ledgerId: e.ledger!.id, type: e.type, amount: parseFloat(e.amount), narration: e.narration || undefined }));
       }
 
-      const res = await fetch('/api/vouchers', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+      const url = editId ? `/api/vouchers/${editId}` : '/api/vouchers';
+      const method = editId ? 'PUT' : 'POST';
+      const res = await fetch(url, {
+        method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
       });
       const d = await res.json();
       if (!res.ok) { toast.error(d.error || 'Save failed'); return; }
-      toast.success(`${label} saved: ${voucherNumber}`);
+      toast.success(editId ? `${label} updated` : `${label} saved: ${voucherNumber}`);
+      if (editId) { router.back(); return; }
       resetForm();
     } catch (err) {
       toast.error('Error saving voucher'); console.error(err);
@@ -320,7 +390,7 @@ export default function VoucherPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeCompany, voucherType, voucherNumber, date, narration, reference, partyLedger, isInvoice,
       invoiceTotal, invoiceRows, useAccountField, parts, accountLedger, accountEntryType, particularsType,
-      partsTotal, entries, drTotal, diff, isBalanced, type, isInterState, label, placeOfSupply]);
+      partsTotal, entries, drTotal, diff, isBalanced, type, isInterState, label, placeOfSupply, editId]);
 
   // Keyboard shortcuts: ⌘S = Save/Accept (Mac muscle memory); ⌥N = narrate
   useEffect(() => {
@@ -371,7 +441,24 @@ export default function VoucherPage() {
     );
   };
 
+  function handleBillWiseAccept(alloc: BillAllocation) {
+    if (billWise.rowType === 'part') {
+      setParts(rows => rows.map((r, i) => i === billWise.rowIdx ? { ...r, billAlloc: alloc, chqRef: alloc.refNumber ?? r.chqRef } : r));
+    } else {
+      setEntries(rows => rows.map((r, i) => i === billWise.rowIdx ? { ...r, billAlloc: alloc } : r));
+    }
+    setBillWise(bw => ({ ...bw, open: false }));
+  }
+
   return (
+    <>
+    <BillWiseModal
+      open={billWise.open}
+      ledger={billWise.ledger}
+      amount={billWise.amount}
+      onClose={() => setBillWise(bw => ({ ...bw, open: false }))}
+      onAccept={handleBillWiseAccept}
+    />
     <div ref={formRef} data-voucher-form style={{ display: 'flex', flexDirection: 'column', height: '100%', fontFamily: 'Courier New' }}>
 
       {/* ── HEADER: voucher name + date ── */}
@@ -380,8 +467,8 @@ export default function VoucherPage() {
         padding: '4px 12px', borderBottom: '1px solid var(--tally-border)',
         background: 'var(--tally-bg-panel)',
       }}>
-        <span style={{ fontWeight: 'bold', color: 'var(--tally-cyan)', fontSize: 13 }}>
-          {label}&nbsp;No.&nbsp;{(voucherCount?.count ?? 0) + 1}
+        <span style={{ fontWeight: 'bold', color: editId ? 'var(--tally-yellow)' : 'var(--tally-cyan)', fontSize: 13 }}>
+          {editId ? '✏️ EDIT — ' : ''}{label}&nbsp;No.&nbsp;{editId ? (editData?.voucher?.number ?? '…') : (voucherCount?.count ?? 0) + 1}
         </span>
         <div style={{ textAlign: 'right' }}>
           <div style={{ color: '#e8e8e8', fontSize: 12 }}>{fmtVoucherDate(date)}</div>
@@ -455,6 +542,16 @@ export default function VoucherPage() {
                         <span style={{ color: 'var(--tally-red)', cursor: 'pointer', fontSize: 10, marginLeft: 4 }} onClick={() => setParts(p => p.filter((_, j) => j !== i))}>✕</span>
                       </div>
                       {curBalLine(row.ledger)}
+                      {row.billAlloc && (
+                        <div style={{ paddingLeft: 28 }}>
+                          <span
+                            style={{ fontSize: 9, color: 'var(--tally-yellow)', background: 'rgba(255,215,0,0.1)', padding: '1px 5px', cursor: 'pointer', border: '1px solid rgba(255,215,0,0.3)' }}
+                            onClick={() => setBillWise({ open: true, rowType: 'part', rowIdx: i, ledger: row.ledger, amount: parseFloat(row.amount) || 0 })}
+                          >
+                            Bill: {row.billAlloc.type}{row.billAlloc.refNumber ? ` — ${row.billAlloc.refNumber}` : ''} ✏️
+                          </span>
+                        </div>
+                      )}
                       {row.ledger && (
                         <div style={{ paddingLeft: 28 }}>
                           <input value={row.narration} onChange={e => updatePart(i, 'narration', e.target.value)} placeholder="narration…" style={{ ...S.input, fontSize: 10, color: 'var(--tally-text-dim)' }} onFocus={e => e.target.select()} />
@@ -743,5 +840,6 @@ export default function VoucherPage() {
         </div>
       </div>
     </div>
+    </>
   );
 }
