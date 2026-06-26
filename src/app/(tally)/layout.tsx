@@ -40,8 +40,8 @@ export default function TallyLayout({ children }: { children: React.ReactNode })
       const target = e.target as HTMLElement;
       const tag = target.tagName.toLowerCase();
       if (!['input', 'select'].includes(tag)) return;
-      // Don't intercept Enter in textareas or when a modifier is held
-      if (e.ctrlKey || e.altKey || e.metaKey) return;
+      // Don't intercept Enter when a modifier is held (allow ⌘Enter, Ctrl+Enter)
+      if (e.altKey || e.metaKey) return;
 
       const form = target.closest('.tally-form, [data-enter-nav]');
       if (!form) return;

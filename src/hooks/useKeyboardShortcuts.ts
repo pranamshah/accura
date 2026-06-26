@@ -9,8 +9,9 @@ export function useKeyboardShortcuts(handlers: Record<string, Handler>) {
       const tag = (e.target as HTMLElement).tagName.toLowerCase();
       const inInput = ['input', 'textarea', 'select'].includes(tag);
 
+      // Treat Cmd (Mac) and Ctrl (Windows/Linux) as equivalent
       const key = [
-        e.ctrlKey && 'ctrl',
+        (e.ctrlKey || e.metaKey) && 'ctrl',
         e.altKey && 'alt',
         e.shiftKey && 'shift',
         e.key.toLowerCase(),
