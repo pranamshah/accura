@@ -1,9 +1,10 @@
 'use client';
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTallyStore } from '@/store/tallyStore';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { useEnterToNext } from '@/hooks/useEnterToNext';
 import type { LedgerGroup } from '@/types';
 
 const NATURE_LABEL: Record<string, string> = {
@@ -43,6 +44,8 @@ const TAX_GROUP_NAMES = new Set(['Duties & Taxes']);
 export default function CreateLedgerPage() {
   const router = useRouter();
   const { activeCompany } = useTallyStore();
+  const formRef = useRef<HTMLDivElement>(null);
+  useEnterToNext(formRef);
   const [form, setForm] = useState({
     name: '', alias: '', groupId: '',
     openingBalance: '0', openingBalanceType: 'DEBIT',
@@ -138,7 +141,7 @@ export default function CreateLedgerPage() {
         <div className="voucher-title">CREATE LEDGER</div>
         <div className="voucher-meta"><span>Ctrl+A to save | Esc to cancel</span></div>
       </div>
-      <div className="tally-form">
+      <div className="tally-form" ref={formRef}>
 
         {/* ── Basic ───────────────────────────────────────────── */}
         <div className="tally-form-section">Basic Details</div>
@@ -146,14 +149,14 @@ export default function CreateLedgerPage() {
         <div className="tally-form-row">
           <span className="tally-form-label">Name *</span>
           <div className="tally-form-field">
-            <input value={form.name} onChange={(e) => set('name', e.target.value)} autoFocus />
+            <input value={form.name} onChange={(e) => set('name', e.target.value)} autoFocus onFocus={(e) => { (e.target as HTMLInputElement).select(); }} />
           </div>
         </div>
 
         <div className="tally-form-row">
           <span className="tally-form-label">Alias</span>
           <div className="tally-form-field">
-            <input value={form.alias} onChange={(e) => set('alias', e.target.value)} />
+            <input value={form.alias} onChange={(e) => set('alias', e.target.value)} onFocus={(e) => { (e.target as HTMLInputElement).select(); }} />
           </div>
         </div>
 
@@ -217,7 +220,7 @@ export default function CreateLedgerPage() {
         <div className="tally-form-row">
           <span className="tally-form-label">Description</span>
           <div className="tally-form-field">
-            <input value={form.description} onChange={(e) => set('description', e.target.value)} placeholder="Optional notes" />
+            <input value={form.description} onChange={(e) => set('description', e.target.value)} placeholder="Optional notes" onFocus={(e) => { (e.target as HTMLInputElement).select(); }} />
           </div>
         </div>
 
@@ -287,7 +290,7 @@ export default function CreateLedgerPage() {
               <div key={field} className="tally-form-row">
                 <span className="tally-form-label">{label}</span>
                 <div className="tally-form-field">
-                  <input value={(form as Record<string, unknown>)[field] as string} onChange={(e) => set(field, e.target.value)} />
+                  <input value={(form as Record<string, unknown>)[field] as string} onChange={(e) => set(field, e.target.value)} onFocus={(e) => { (e.target as HTMLInputElement).select(); }} />
                 </div>
               </div>
             ))}
@@ -303,7 +306,7 @@ export default function CreateLedgerPage() {
               <div key={field} className="tally-form-row">
                 <span className="tally-form-label">{label}</span>
                 <div className="tally-form-field">
-                  <input value={(form as Record<string, unknown>)[field] as string} onChange={(e) => set(field, e.target.value)} />
+                  <input value={(form as Record<string, unknown>)[field] as string} onChange={(e) => set(field, e.target.value)} onFocus={(e) => { (e.target as HTMLInputElement).select(); }} />
                 </div>
               </div>
             ))}
@@ -355,7 +358,7 @@ export default function CreateLedgerPage() {
               <div key={field} className="tally-form-row">
                 <span className="tally-form-label">{label}</span>
                 <div className="tally-form-field">
-                  <input value={(form as Record<string, unknown>)[field] as string} onChange={(e) => set(field, e.target.value)} />
+                  <input value={(form as Record<string, unknown>)[field] as string} onChange={(e) => set(field, e.target.value)} onFocus={(e) => { (e.target as HTMLInputElement).select(); }} />
                 </div>
               </div>
             ))}

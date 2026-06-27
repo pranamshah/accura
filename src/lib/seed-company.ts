@@ -41,6 +41,30 @@ const GROUPS: { name: string; nature: 'ASSETS' | 'LIABILITIES' | 'INCOME' | 'EXP
   { name: 'Sundry Creditors',         nature: 'LIABILITIES', alias: 'Creditors',    parentName: 'Current Liabilities' },
   // Under Capital Account:
   { name: 'Reserves & Surplus',       nature: 'LIABILITIES', alias: 'Reserves',     parentName: 'Capital Account'     },
+  // ── PRACTICAL SUB-GROUPS (used in real Tally setups) ───────────────────────────
+  // Under Sundry Debtors:
+  { name: 'Dealers',                       nature: 'ASSETS',      alias: 'Dealers',       parentName: 'Sundry Debtors'             },
+  { name: 'Retailers',                     nature: 'ASSETS',      alias: 'Retailers',     parentName: 'Sundry Debtors'             },
+  // Under Sundry Creditors:
+  { name: 'Distributors',                  nature: 'LIABILITIES', alias: 'Distributors',  parentName: 'Sundry Creditors'           },
+  { name: 'Clearing & Forwarding Agents',  nature: 'LIABILITIES', alias: 'C&F Agents',    parentName: 'Sundry Creditors'           },
+  { name: 'Creditors for Expenses',        nature: 'LIABILITIES', alias: 'Creditors Exp', parentName: 'Sundry Creditors'           },
+  // Under Current Liabilities:
+  { name: 'Deposit Received',              nature: 'LIABILITIES', alias: 'Deposit Rcvd',  parentName: 'Current Liabilities'        },
+  { name: 'Advances Received',             nature: 'LIABILITIES', alias: 'Advances Rcvd', parentName: 'Current Liabilities'        },
+  // Under Provisions:
+  { name: 'Outstanding Expenses',          nature: 'LIABILITIES', alias: 'Outst Exp',     parentName: 'Provisions'                 },
+  // Under Fixed Assets:
+  { name: 'Office Equipment',              nature: 'ASSETS',      alias: 'Office Equip',  parentName: 'Fixed Assets'               },
+  // Under Loans & Advances (Asset):
+  { name: 'Loan to Staff',                 nature: 'ASSETS',      alias: 'Loan Staff',    parentName: 'Loans & Advances (Asset)'   },
+  { name: 'Advances (Asset)',              nature: 'ASSETS',      alias: 'Advances',      parentName: 'Loans & Advances (Asset)'   },
+  // Under Indirect Expenses:
+  { name: 'Salaries & Staff Expenses',     nature: 'EXPENSES',    alias: 'Salaries',      parentName: 'Indirect Expenses'          },
+  { name: 'Marketing Expenses',            nature: 'EXPENSES',    alias: 'Marketing',     parentName: 'Indirect Expenses'          },
+  { name: 'Administrative Expenses',       nature: 'EXPENSES',    alias: 'Admin Exp',     parentName: 'Indirect Expenses'          },
+  { name: 'Financial Expenses',            nature: 'EXPENSES',    alias: 'Finance Exp',   parentName: 'Indirect Expenses'          },
+  { name: 'Depreciation',                  nature: 'EXPENSES',    alias: 'Depreciation',  parentName: 'Indirect Expenses'          },
 ];
 
 // Seeds the standard chart of accounts for a company. Idempotent — safe to

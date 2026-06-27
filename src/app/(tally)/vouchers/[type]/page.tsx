@@ -6,6 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import { formatDateISO, formatCurrency, calculateGST } from '@/lib/utils';
 import LedgerCombobox from '@/components/tally/LedgerCombobox';
 import BillWiseModal, { type BillAllocation } from '@/components/tally/BillWiseModal';
+import ItemAllocationPopup, { type GodownAlloc } from '@/components/tally/ItemAllocationPopup';
 import { useEnterToNext } from '@/hooks/useEnterToNext';
 import { toast } from 'sonner';
 import { clickToChatInvoice } from '@/lib/whatsapp';
@@ -17,15 +18,35 @@ const BILL_WISE_GROUPS = new Set(['Sundry Debtors', 'Sundry Creditors']);
 const VOUCHER_LABELS: Record<string, string> = {
   contra: 'Contra', payment: 'Payment', receipt: 'Receipt', journal: 'Journal',
   sales: 'Sales', purchase: 'Purchase', 'debit-note': 'Debit Note', 'credit-note': 'Credit Note',
+  'stock-journal':   'Stock Journal',
+  'delivery-note':   'Delivery Note',
+  'receipt-note':    'Receipt Note',
+  'physical-stock':  'Physical Stock',
+  'sales-order':     'Sales Order',
+  'purchase-order':  'Purchase Order',
+  'payroll-vch':     'Payroll',
+  'attendance-vch':  'Attendance',
+  'memo':            'Memorandum',
+  'reversing':       'Reversing Journal',
 };
 
 const VOUCHER_TYPE_MAP: Record<string, string> = {
   contra: 'CONTRA', payment: 'PAYMENT', receipt: 'RECEIPT', journal: 'JOURNAL',
   sales: 'SALES', purchase: 'PURCHASE', 'debit-note': 'DEBIT_NOTE', 'credit-note': 'CREDIT_NOTE',
+  'stock-journal':   'STOCK_JOURNAL',
+  'delivery-note':   'DELIVERY_NOTE',
+  'receipt-note':    'RECEIPT_NOTE',
+  'physical-stock':  'PHYSICAL_STOCK',
+  'sales-order':     'SALES_ORDER',
+  'purchase-order':  'PURCHASE_ORDER',
+  'payroll-vch':     'PAYROLL',
+  'attendance-vch':  'ATTENDANCE',
+  'memo':            'MEMORANDUM',
+  'reversing':       'REVERSING_JOURNAL',
 };
 
 // Payment/Receipt/Contra use a top "Account" field (bank/cash)
-const ACCOUNT_FIELD_TYPES = new Set(['payment', 'receipt', 'contra']);
+const ACCOUNT_FIELD_TYPES = new Set(['payment', 'receipt', 'contra', 'delivery-note', 'receipt-note']);
 
 // Payment/Contra: account ledger is CREDITED; Receipt: account ledger is DEBITED
 function getAccountEntryType(type: string): 'DEBIT' | 'CREDIT' {
@@ -109,7 +130,7 @@ export default function VoucherPage() {
 
   const label = VOUCHER_LABELS[type] ?? type.toUpperCase();
   const voucherType = VOUCHER_TYPE_MAP[type] ?? type.toUpperCase();
-  const isInvoice = ['sales', 'purchase'].includes(type);
+  const isInvoice = ['sales', 'purchase', 'sales-order', 'purchase-order', 'debit-note', 'credit-note'].includes(type);
   const useAccountField = ACCOUNT_FIELD_TYPES.has(type);
   const accountEntryType = getAccountEntryType(type);
   const particularsType = getParticularsType(type);
@@ -151,6 +172,16 @@ export default function VoucherPage() {
     ledger: Ledger | null;
     amount: number;
   }>({ open: false, rowType: 'part', rowIdx: 0, ledger: null, amount: 0 });
+
+  // Item allocation popup (godown allocation for invoice rows)
+  const [allocPopup, setAllocPopup] = useState<{
+    open: boolean;
+    rowIdx: number;
+    itemName: string;
+    quantity: number;
+    unit: string;
+    rate: number;
+  }>({ open: false, rowIdx: 0, itemName: '', quantity: 0, unit: '', rate: 0 });
 
   // Container ref for Enter-to-next-field navigation (Tally behaviour)
   const formRef = useRef<HTMLDivElement>(null);
@@ -450,6 +481,17 @@ export default function VoucherPage() {
     setBillWise(bw => ({ ...bw, open: false }));
   }
 
+  function handleAllocAccept(allocations: GodownAlloc[]) {
+    // Store allocations on the invoice row (first allocation's data drives the row totals)
+    setInvoiceRows(rows => rows.map((r, i) => {
+      if (i !== allocPopup.rowIdx) return r;
+      const totalQty = allocations.reduce((s, a) => s + a.quantity, 0);
+      const totalAmt = allocations.reduce((s, a) => s + a.amount, 0);
+      return { ...r, qty: String(totalQty), amount: totalAmt };
+    }));
+    setAllocPopup(a => ({ ...a, open: false }));
+  }
+
   return (
     <>
     <BillWiseModal
@@ -458,6 +500,15 @@ export default function VoucherPage() {
       amount={billWise.amount}
       onClose={() => setBillWise(bw => ({ ...bw, open: false }))}
       onAccept={handleBillWiseAccept}
+    />
+    <ItemAllocationPopup
+      open={allocPopup.open}
+      itemName={allocPopup.itemName}
+      quantity={allocPopup.quantity}
+      unit={allocPopup.unit}
+      rate={allocPopup.rate}
+      onClose={() => setAllocPopup(a => ({ ...a, open: false }))}
+      onAccept={handleAllocAccept}
     />
     <div ref={formRef} data-voucher-form style={{ display: 'flex', flexDirection: 'column', height: '100%', fontFamily: 'Courier New' }}>
 
@@ -740,7 +791,19 @@ export default function VoucherPage() {
                           <datalist id={`items-${i}`}>{(itemsData?.items ?? []).map(it => <option key={it.id} value={it.name} />)}</datalist>
                         </td>
                         <td style={S.td}><input value={row.hsnCode} onChange={e => updateInvRow(i, 'hsnCode', e.target.value)} style={S.input} /></td>
-                        <td style={S.amtTd}><AmountCell value={row.qty} onChange={v => updateInvRow(i, 'qty', v)} /></td>
+                        <td style={S.amtTd}>
+                          <AmountCell
+                            value={row.qty}
+                            onChange={v => updateInvRow(i, 'qty', v)}
+                            style={{ cursor: 'text' }}
+                          />
+                          {isInvoice && row.itemName && (parseFloat(row.qty) || 0) > 0 && (
+                            <span
+                              style={{ fontSize: 9, color: 'var(--tally-text-dim)', cursor: 'pointer' }}
+                              onClick={() => setAllocPopup({ open: true, rowIdx: i, itemName: row.itemName, quantity: parseFloat(row.qty) || 0, unit: '', rate: parseFloat(row.rate) || 0 })}
+                            >⊞</span>
+                          )}
+                        </td>
                         <td style={S.amtTd}><AmountCell value={row.rate} onChange={v => updateInvRow(i, 'rate', v)} /></td>
                         <td style={S.amtTd}><AmountCell value={row.discount} onChange={v => updateInvRow(i, 'discount', v)} /></td>
                         <td style={S.td}>

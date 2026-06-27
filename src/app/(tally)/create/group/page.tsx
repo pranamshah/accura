@@ -1,14 +1,17 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTallyStore } from '@/store/tallyStore';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { useEnterToNext } from '@/hooks/useEnterToNext';
 import type { LedgerGroup } from '@/types';
 
 export default function CreateGroupPage() {
   const router = useRouter();
   const { activeCompany } = useTallyStore();
+  const formRef = useRef<HTMLDivElement>(null);
+  useEnterToNext(formRef);
   const [form, setForm] = useState({ name: '', alias: '', parentId: '', nature: 'ASSETS' as const });
   const [saving, setSaving] = useState(false);
 
@@ -54,15 +57,15 @@ export default function CreateGroupPage() {
       <div className="voucher-header">
         <div className="voucher-title">CREATE LEDGER GROUP</div>
       </div>
-      <div className="tally-form">
+      <div className="tally-form" ref={formRef}>
         <div className="tally-form-section">Group Details</div>
         <div className="tally-form-row">
           <span className="tally-form-label">Name *</span>
-          <div className="tally-form-field"><input autoFocus value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} /></div>
+          <div className="tally-form-field"><input autoFocus value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} onFocus={(e) => { (e.target as HTMLInputElement).select(); }} /></div>
         </div>
         <div className="tally-form-row">
           <span className="tally-form-label">Alias</span>
-          <div className="tally-form-field"><input value={form.alias} onChange={(e) => setForm((f) => ({ ...f, alias: e.target.value }))} /></div>
+          <div className="tally-form-field"><input value={form.alias} onChange={(e) => setForm((f) => ({ ...f, alias: e.target.value }))} onFocus={(e) => { (e.target as HTMLInputElement).select(); }} /></div>
         </div>
         <div className="tally-form-row">
           <span className="tally-form-label">Under (Parent Group)</span>

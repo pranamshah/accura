@@ -98,6 +98,17 @@ export default function TallyLayout({ children }: { children: React.ReactNode })
     'f9': () => router.push('/vouchers/purchase'),
     'ctrl+shift+5': () => router.push('/vouchers/debit-note'),   // ⌘⇧5
     'ctrl+shift+6': () => router.push('/vouchers/credit-note'),  // ⌘⇧6
+    'ctrl+shift+7': () => router.push('/vouchers/stock-journal'), // ⌘⇧7
+    'ctrl+shift+8': () => router.push('/vouchers/delivery-note'), // ⌘⇧8
+    'ctrl+shift+9': () => router.push('/vouchers/receipt-note'),  // ⌘⇧9
+    'ctrl+shift+0': () => router.push('/vouchers/physical-stock'),// ⌘⇧0
+    'ctrl+f8':      () => router.push('/vouchers/sales-order'),   // ⌘F8
+    'ctrl+f9':      () => router.push('/vouchers/purchase-order'),// ⌘F9
+    'ctrl+f4':      () => router.push('/vouchers/payroll-vch'),   // ⌘F4
+    'ctrl+f5':      () => router.push('/vouchers/attendance-vch'),// ⌘F5
+    'alt+p':        () => window.print(),                         // ⌥P Print
+    'alt+l':        () => {},                                     // ⌥L Edit Log (stub)
+    'ctrl+p':       () => window.print(),                         // ⌘P Quick Print
     // Reports
     'f11': () => router.push('/company/features'),  // F11 Company Features
     'f12': () => router.push('/company/configure'), // F12 Configure

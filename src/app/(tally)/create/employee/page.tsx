@@ -1,12 +1,15 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTallyStore } from '@/store/tallyStore';
 import { toast } from 'sonner';
+import { useEnterToNext } from '@/hooks/useEnterToNext';
 
 export default function CreateEmployeePage() {
   const router = useRouter();
   const { activeCompany } = useTallyStore();
+  const formRef = useRef<HTMLDivElement>(null);
+  useEnterToNext(formRef);
   const [form, setForm] = useState({
     code: '', name: '', designation: '', department: '',
     dateOfJoining: '', pan: '', aadhaar: '', uan: '', esicNo: '',
@@ -84,7 +87,7 @@ export default function CreateEmployeePage() {
       <div className="voucher-header">
         <div className="voucher-title">CREATE EMPLOYEE</div>
       </div>
-      <div className="tally-form">
+      <div className="tally-form" ref={formRef}>
         {sections.map((section) => (
           <div key={section.title}>
             <div className="tally-form-section">{section.title}</div>
@@ -92,7 +95,7 @@ export default function CreateEmployeePage() {
               <div key={field} className="tally-form-row">
                 <span className="tally-form-label">{label}</span>
                 <div className="tally-form-field">
-                  <input autoFocus={field === 'name'} type={type} value={(form as Record<string, string>)[field]} onChange={(e) => set(field, e.target.value)} style={{ colorScheme: 'dark' }} />
+                  <input autoFocus={field === 'name'} type={type} value={(form as Record<string, string>)[field]} onChange={(e) => set(field, e.target.value)} style={{ colorScheme: 'dark' }} onFocus={(e) => { if (type === 'text') (e.target as HTMLInputElement).select(); }} />
                 </div>
               </div>
             ))}

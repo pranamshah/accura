@@ -1,12 +1,15 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTallyStore } from '@/store/tallyStore';
 import { toast } from 'sonner';
+import { useEnterToNext } from '@/hooks/useEnterToNext';
 
 export default function CreateStockItemPage() {
   const router = useRouter();
   const { activeCompany } = useTallyStore();
+  const formRef = useRef<HTMLDivElement>(null);
+  useEnterToNext(formRef);
   const [form, setForm] = useState({
     name: '', alias: '', code: '', hsnCode: '', sacCode: '',
     unit: 'Nos', category: '', igstRate: '18', cgstRate: '9', sgstRate: '9', cessRate: '0',
@@ -76,13 +79,13 @@ export default function CreateStockItemPage() {
       <div className="voucher-header">
         <div className="voucher-title">CREATE STOCK ITEM</div>
       </div>
-      <div className="tally-form">
+      <div className="tally-form" ref={formRef}>
         <div className="tally-form-section">Item Details</div>
         {fields.map(({ label, field }) => (
           <div key={field} className="tally-form-row">
             <span className="tally-form-label">{label}</span>
             <div className="tally-form-field">
-              <input autoFocus={field === 'name'} value={(form as Record<string, string>)[field]} onChange={(e) => set(field, e.target.value)} />
+              <input autoFocus={field === 'name'} value={(form as Record<string, string>)[field]} onChange={(e) => set(field, e.target.value)} onFocus={(e) => { (e.target as HTMLInputElement).select(); }} />
             </div>
           </div>
         ))}
