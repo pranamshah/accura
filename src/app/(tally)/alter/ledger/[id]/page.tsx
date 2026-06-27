@@ -13,6 +13,9 @@ export default function AlterLedgerDetailPage() {
   const { activeCompany } = useTallyStore();
   const [form, setForm] = useState<Record<string, unknown>>({});
   const [saving, setSaving] = useState(false);
+  const [deleteCheck, setDeleteCheck] = useState<{ canDelete: boolean; entryCount: number; voucherCount: number } | null>(null);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const { data: ledgerData } = useQuery<{ ledger: Ledger }>({
     queryKey: ['ledger', id],
@@ -68,6 +71,28 @@ export default function AlterLedgerDetailPage() {
     return () => window.removeEventListener('keydown', onKey);
   }, [handleSave]);
 
+  const handleDeleteClick = async () => {
+    const res = await fetch(`/api/ledger/${id}/check-deletable`);
+    const check = await res.json();
+    setDeleteCheck(check);
+    setShowDeleteDialog(true);
+  };
+
+  const confirmDelete = async () => {
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/ledger/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        toast.success('Ledger deleted');
+        router.push('/alter/ledger');
+      } else {
+        const d = await res.json();
+        toast.error(d.error || 'Delete failed');
+        setShowDeleteDialog(false);
+      }
+    } finally { setDeleting(false); }
+  };
+
   if (!ledgerData?.ledger) return <div style={{ padding: 16, color: '#a0a0a0' }}>Loading...</div>;
 
   return (
@@ -115,14 +140,56 @@ export default function AlterLedgerDetailPage() {
         <div className="tally-form-actions">
           <button className="tally-btn primary" onClick={handleSave} disabled={saving}>{saving ? 'Saving...' : 'Accept [Ctrl+A]'}</button>
           <button className="tally-btn" onClick={() => router.push('/alter/ledger')}>Cancel</button>
-          <button className="tally-btn danger" onClick={async () => {
-            if (!confirm('Delete this ledger?')) return;
-            await fetch(`/api/ledger/${id}`, { method: 'DELETE' });
-            toast.success('Ledger deleted');
-            router.push('/alter/ledger');
-          }}>Delete</button>
+          <button className="tally-btn danger" onClick={handleDeleteClick}>Delete</button>
         </div>
       </div>
+
+      {/* Delete confirmation dialog */}
+      {showDeleteDialog && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 200,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <div style={{
+            background: 'var(--tally-bg-panel)', border: '1px solid var(--tally-border)',
+            padding: 24, minWidth: 360, maxWidth: 480, fontFamily: 'Courier New',
+          }}>
+            {deleteCheck?.canDelete ? (
+              <>
+                <div style={{ color: 'var(--tally-yellow)', fontWeight: 'bold', marginBottom: 12 }}>Delete Ledger</div>
+                <div style={{ color: '#e8e8e8', fontSize: 13, marginBottom: 20 }}>
+                  Delete ledger &ldquo;{ledgerData.ledger.name}&rdquo;? This cannot be undone.
+                </div>
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                  <button className="tally-btn danger" onClick={confirmDelete} disabled={deleting}>
+                    {deleting ? 'Deleting...' : 'Delete'}
+                  </button>
+                  <button className="tally-btn" onClick={() => setShowDeleteDialog(false)}>Cancel</button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div style={{ color: 'var(--tally-red)', fontWeight: 'bold', marginBottom: 12 }}>Cannot Delete Ledger</div>
+                <div style={{ color: '#e8e8e8', fontSize: 13, marginBottom: 8 }}>
+                  &ldquo;{ledgerData.ledger.name}&rdquo; has <strong>{deleteCheck?.entryCount}</strong> voucher entries across{' '}
+                  <strong>{deleteCheck?.voucherCount}</strong> vouchers. You cannot delete it.
+                </div>
+                <div style={{ color: 'var(--tally-text-dim)', fontSize: 12, marginBottom: 20 }}>
+                  Options:<br />
+                  • Rename/Alter the ledger instead<br />
+                  • Delete the vouchers first, then delete this ledger
+                </div>
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                  <button className="tally-btn" onClick={() => { setShowDeleteDialog(false); router.push('/display/day-book'); }}>
+                    View Vouchers
+                  </button>
+                  <button className="tally-btn" onClick={() => setShowDeleteDialog(false)}>Cancel</button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

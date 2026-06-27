@@ -24,14 +24,15 @@ export async function GET(req: NextRequest) {
     if (!ledger) return NextResponse.json({ rows: [], openingBalance: 0, closingBalance: 0 });
 
     const entries = await sql`
-      SELECT ve.*, v.date, v.number, v.type, v.narration as v_narration,
+      SELECT ve.*, v.id as vid, v.date, v.number, v.type as vtype, v.narration as v_narration,
+        ve.type as entry_type,
         (SELECT name FROM ledgers WHERE id = (
           SELECT ledger_id FROM voucher_entries WHERE voucher_id = v.id AND ledger_id != ${targetLedgerId} LIMIT 1
         )) as contra_ledger
       FROM voucher_entries ve
       JOIN vouchers v ON v.id = ve.voucher_id
       WHERE ve.ledger_id = ${targetLedgerId}
-        AND v.status != 'CANCELLED'
+        AND v.status = 'ACTIVE'
         ${from ? sql`AND v.date >= ${from}` : sql``}
         ${to ? sql`AND v.date <= ${to}` : sql``}
       ORDER BY v.date, v.created_at
@@ -42,13 +43,14 @@ export async function GET(req: NextRequest) {
     let runningBalance = obType === 'DEBIT' ? openingBalance : -openingBalance;
 
     const rows = entries.map((e) => {
-      const debit = e.type === 'DEBIT' ? parseFloat(e.amount) : 0;
-      const credit = e.type === 'CREDIT' ? parseFloat(e.amount) : 0;
+      const debit = e.entry_type === 'DEBIT' ? parseFloat(e.amount) : 0;
+      const credit = e.entry_type === 'CREDIT' ? parseFloat(e.amount) : 0;
       runningBalance += debit - credit;
       return {
+        voucherId: e.vid,
         date: e.date,
         voucherNumber: e.number,
-        voucherType: e.type,
+        voucherType: e.vtype,
         particulars: e.contra_ledger ?? e.v_narration ?? '-',
         debit,
         credit,

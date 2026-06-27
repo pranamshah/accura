@@ -864,7 +864,14 @@ export default function VoucherPage() {
         {/* ── NARRATION ── */}
         <div style={{ padding: '4px 12px', borderTop: '1px solid var(--tally-border)', display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 11, color: 'var(--tally-text-dim)', minWidth: 68, flexShrink: 0 }}>Narration</span>
-          <input value={narration} onChange={e => setNarration(e.target.value)} placeholder="Being …" style={{ ...S.input, flex: 1 }} />
+          <input
+            value={narration}
+            onChange={e => setNarration(e.target.value)}
+            placeholder="Being …"
+            style={{ ...S.input, flex: 1 }}
+            data-narration-field
+            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleSave(); } }}
+          />
           <button className="tally-btn" style={{ fontSize: 10, whiteSpace: 'nowrap', flexShrink: 0 }} onClick={handleAutoNarrate} disabled={narrating}>
             {narrating ? '…' : '✨ Auto [⌥N]'}
           </button>

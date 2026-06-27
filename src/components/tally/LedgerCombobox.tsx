@@ -26,6 +26,8 @@ export default function LedgerCombobox({ value, onChange, placeholder = 'Select 
   const [showCreate, setShowCreate] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const dropRef  = useRef<HTMLDivElement>(null);
+  const blankEnterCount = useRef(0);
+  const selectedLedger = useRef<Ledger | null>(null);
 
   const { data } = useQuery<{ ledgers: Ledger[] }>({
     queryKey: ['ledgers', activeCompany?.id],
@@ -40,7 +42,10 @@ export default function LedgerCombobox({ value, onChange, placeholder = 'Select 
   const allLedgers = data?.ledgers ?? [];
   const filtered = allLedgers.filter(l => l.name.toLowerCase().includes(query.toLowerCase()));
 
-  useEffect(() => { setQuery(value || ''); }, [value]);
+  useEffect(() => {
+    setQuery(value || '');
+    if (!value) { selectedLedger.current = null; blankEnterCount.current = 0; }
+  }, [value]);
 
   useEffect(() => {
     function handleOutside(e: MouseEvent) {
@@ -58,6 +63,8 @@ export default function LedgerCombobox({ value, onChange, placeholder = 'Select 
   function select(l: Ledger) {
     setQuery(l.name);
     setOpen(false);
+    selectedLedger.current = l;
+    blankEnterCount.current = 0;
     onChange(l);
   }
 
@@ -79,29 +86,59 @@ export default function LedgerCombobox({ value, onChange, placeholder = 'Select 
     }
   }
 
+  function focusNarration() {
+    const container = inputRef.current?.closest<HTMLElement>('[data-voucher-form]');
+    const narration = container?.querySelector<HTMLElement>('[data-narration-field]');
+    if (narration) {
+      narration.focus();
+      if (narration instanceof HTMLInputElement) narration.select();
+    }
+  }
+
   function handleKeyDown(e: React.KeyboardEvent) {
     if (e.key === 'ArrowDown') { e.preventDefault(); setActiveIdx(i => Math.min(i + 1, filtered.length - 1)); return; }
     if (e.key === 'ArrowUp')   { e.preventDefault(); setActiveIdx(i => Math.max(i - 1, 0)); return; }
 
     if (e.key === 'Enter') {
       e.preventDefault();
-      // stopPropagation so the container's useEnterToNext doesn't double-fire
       e.stopPropagation();
+
+      const inputValue = inputRef.current?.value?.trim() ?? '';
 
       if (open && filtered[activeIdx]) {
         select(filtered[activeIdx]);
         setOpen(false);
-        // After selecting, move to the next field in the form
         setTimeout(moveToNextField, 0);
-      } else if (filtered.length === 1) {
+        return;
+      }
+
+      if (filtered.length === 1 && inputValue) {
         select(filtered[0]);
         setOpen(false);
         setTimeout(moveToNextField, 0);
-      } else {
-        // No selection yet — just close and move
-        setOpen(false);
-        setTimeout(moveToNextField, 0);
+        return;
       }
+
+      // Blank field with no selection
+      if (!inputValue && !selectedLedger.current) {
+        blankEnterCount.current += 1;
+        if (blankEnterCount.current >= 2) {
+          blankEnterCount.current = 0;
+          focusNarration();
+        }
+        // First Enter on blank — stay put
+        return;
+      }
+
+      // Has a prior selection — just advance
+      if (selectedLedger.current) {
+        blankEnterCount.current = 0;
+        setTimeout(moveToNextField, 0);
+        return;
+      }
+
+      // Text typed but no clear match — close and stay
+      setOpen(false);
       return;
     }
 

@@ -51,7 +51,13 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   try {
     const session = await getSession();
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    await sql`UPDATE items SET is_active = false WHERE id = ${id}`;
+    const check = await sql`SELECT COUNT(*) as c FROM inventory_lines WHERE item_id = ${id}`;
+    if (parseInt(check[0].c) > 0) {
+      return NextResponse.json({
+        error: `Cannot delete stock item. It has ${check[0].c} inventory entries. Delete those vouchers first.`,
+      }, { status: 409 });
+    }
+    await sql`DELETE FROM items WHERE id = ${id}`;
     return NextResponse.json({ success: true });
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 });

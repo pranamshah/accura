@@ -62,7 +62,19 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   try {
     const session = await getSession();
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    await sql`UPDATE ledgers SET is_active = false, updated_at = NOW() WHERE id = ${id}`;
+    const check = await sql`
+      SELECT COUNT(*) as entry_count, COUNT(DISTINCT voucher_id) as voucher_count
+      FROM voucher_entries WHERE ledger_id = ${id}
+    `;
+    const entryCount = parseInt(check[0].entry_count);
+    if (entryCount > 0) {
+      return NextResponse.json({
+        error: `Cannot delete ledger. It has ${entryCount} voucher entries across ${check[0].voucher_count} vouchers. Delete those vouchers first or use Alter to rename it.`,
+        entryCount,
+        voucherCount: parseInt(check[0].voucher_count),
+      }, { status: 409 });
+    }
+    await sql`DELETE FROM ledgers WHERE id = ${id}`;
     return NextResponse.json({ success: true });
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 });

@@ -49,6 +49,19 @@ export async function POST(req: NextRequest) {
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const body = await req.json();
 
+    // Server-side validation: skip for invoice/inventory vouchers (they use inventory lines)
+    if (!body.inventoryLines?.length && !body.gstApplicable) {
+      const entries = (body.entries ?? []).filter((e: { ledgerId?: string; amount?: number }) => e.ledgerId && Number(e.amount) > 0);
+      if (entries.length < 2) {
+        return NextResponse.json({ error: 'Voucher has no valid entries' }, { status: 400 });
+      }
+      const totalDr = entries.filter((e: { type: string }) => e.type === 'DEBIT').reduce((s: number, e: { amount: number }) => s + Number(e.amount), 0);
+      const totalCr = entries.filter((e: { type: string }) => e.type === 'CREDIT').reduce((s: number, e: { amount: number }) => s + Number(e.amount), 0);
+      if (Math.abs(totalDr - totalCr) > 0.01) {
+        return NextResponse.json({ error: `Unbalanced voucher: Dr ${totalDr.toFixed(2)} ≠ Cr ${totalCr.toFixed(2)}` }, { status: 400 });
+      }
+    }
+
     const [voucher] = await sql`
       INSERT INTO vouchers (
         company_id, type, number, date, narration, reference,
